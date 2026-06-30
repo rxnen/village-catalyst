@@ -1,4 +1,9 @@
 import { useMemo } from 'react'
+import {
+  USE_CODE_CLUSTERS,
+  attachExcludedCodes,
+  parcelExcludedByUseCode,
+} from './useCodeClusters.js'
 
 export const TRACK_A_COLOR = '#f9a825'
 export const TRACK_B_COLOR = '#00897b'
@@ -34,6 +39,7 @@ export function passesFilters(parcel, filters) {
   }
   if (filters.onlyLeads && !isLead(parcel)) return false
   if (filters.requireBothTracks && !passesBothTracks(parcel)) return false
+  if (parcelExcludedByUseCode(parcel, filters._excludedUseCodes)) return false
   return true
 }
 
@@ -80,7 +86,15 @@ function cityLabel(city) {
 export default function FilterPanel({ filters, onChange, counts, availableCities }) {
   if (!filters) return null
 
-  const set = (patch) => onChange({ ...filters, ...patch })
+  const set = (patch) => onChange(attachExcludedCodes({ ...filters, ...patch }))
+
+  const toggleExcludeCluster = (clusterId) => {
+    const next = {
+      ...filters.excludeClusters,
+      [clusterId]: !filters.excludeClusters[clusterId],
+    }
+    set({ excludeClusters: next })
+  }
 
   const toggleCity = (city) => {
     const next = filters.cities.includes(city)
@@ -136,6 +150,28 @@ export default function FilterPanel({ filters, onChange, counts, availableCities
             />
           </label>
         </div>
+      </fieldset>
+
+      <fieldset className="filter-group filter-group-use-codes">
+        <legend>Assessor land use</legend>
+        <p className="filter-hint filter-hint-block">
+          Checked groups are hidden. Vacant, public, and institutional land stays
+          visible by default for village-site screening.
+        </p>
+        {USE_CODE_CLUSTERS.map((cluster) => (
+          <label
+            key={cluster.id}
+            className="filter-check filter-check-cluster"
+            title={cluster.hint}
+          >
+            <input
+              type="checkbox"
+              checked={filters.excludeClusters[cluster.id]}
+              onChange={() => toggleExcludeCluster(cluster.id)}
+            />
+            {cluster.label}
+          </label>
+        ))}
       </fieldset>
 
       <fieldset className="filter-group">

@@ -10,11 +10,13 @@ import FilterPanel, {
   TRACK_A_COLOR,
   TRACK_B_COLOR,
   formatTracks,
-  leadOutline,
   parcelsWhere,
   passesFilters,
   useFilterCounts,
 } from './FilterPanel.jsx'
+import { attachExcludedCodes, defaultExcludeClusters } from './useCodeClusters.js'
+import { isSatelliteZoom, styleParcelFeature } from './parcelStyle.js'
+import { attachParcelPopupSelect, parcelDetailLink } from './parcelPopup.js'
 
 const MAP_CENTER = [37.74, -122.05]
 
@@ -79,15 +81,24 @@ function useJson(url) {
   return data
 }
 
-function AlamedaParcelsLayer({ parcelIndex, filters }) {
+function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
   const map = useMap()
   const parcels = parcelIndex?.parcels
   const [showDetail, setShowDetail] = useState(
     () => map.getZoom() >= PARCEL_DETAIL_MIN_ZOOM,
   )
+  const [satellite, setSatellite] = useState(() => isSatelliteZoom(map.getZoom()))
 
   useEffect(() => {
-    const update = () => setShowDetail(map.getZoom() >= PARCEL_DETAIL_MIN_ZOOM)
+    if (!onParcelSelect) return
+    return attachParcelPopupSelect(map, onParcelSelect)
+  }, [map, onParcelSelect])
+
+  useEffect(() => {
+    const update = () => {
+      setShowDetail(map.getZoom() >= PARCEL_DETAIL_MIN_ZOOM)
+      setSatellite(isSatelliteZoom(map.getZoom()))
+    }
     map.on('zoomend', update)
     return () => map.off('zoomend', update)
   }, [map])
@@ -104,15 +115,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters }) {
         if (!parcel || !passesFilters(parcel, filters)) {
           return { opacity: 0, fillOpacity: 0, weight: 0 }
         }
-        const category = parcel.land_use?.category ?? 'unmatched'
-        const color = categoryColor(category)
-        const outline = leadOutline(parcel)
-        return {
-          color: outline?.color ?? color,
-          weight: outline?.weight ?? 0.6,
-          fillColor: color,
-          fillOpacity: category === 'unmatched' ? 0.12 : 0.25,
-        }
+        return styleParcelFeature(parcel, { categoryColor, satellite })
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties
@@ -141,7 +144,8 @@ function AlamedaParcelsLayer({ parcelIndex, filters }) {
             `<br/>${parcel.area_acres.toFixed(2)} acres` +
             ratioBlock +
             trackBlock +
-            landUseBlock,
+            landUseBlock +
+            parcelDetailLink(p.APN),
         )
       },
     })
@@ -149,12 +153,10 @@ function AlamedaParcelsLayer({ parcelIndex, filters }) {
     return () => {
       map.removeLayer(layer)
     }
-  }, [map, parcels, filters, showDetail])
+  }, [map, parcels, filters, showDetail, satellite])
 
   return null
 }
-
-const SATELLITE_MIN_ZOOM = 15
 
 const CARTO_LIGHT = {
   url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
@@ -170,10 +172,10 @@ const SATELLITE = {
 
 function ZoomBasemap() {
   const map = useMap()
-  const [satellite, setSatellite] = useState(() => map.getZoom() >= SATELLITE_MIN_ZOOM)
+  const [satellite, setSatellite] = useState(() => isSatelliteZoom(map.getZoom()))
 
   useEffect(() => {
-    const update = () => setSatellite(map.getZoom() >= SATELLITE_MIN_ZOOM)
+    const update = () => setSatellite(isSatelliteZoom(map.getZoom()))
     map.on('zoomend', update)
     return () => map.off('zoomend', update)
   }, [map])
@@ -184,27 +186,19 @@ function ZoomBasemap() {
 
 function Legend() {
   return (
-    <div className="legend">
-      <b>Lead tracks</b>
-      <div className="legend-row">
+    <div className="legend legend-compact" title="Parcel outline colors for lead scoring">
+      <div className="legend-row" title="Passes Track A and Track B">
         <span className="swatch swatch-outline" style={{ borderColor: BOTH_TRACKS_COLOR }} />
-        Both tracks (strongest)
+        Both tracks
       </div>
-      <div className="legend-row">
+      <div className="legend-row" title="OTEX > 0, or HOEX = 0 and mailing city ≠ situs city">
         <span className="swatch swatch-outline" style={{ borderColor: TRACK_A_COLOR }} />
-        Track A — institutional / absentee
+        Track A
       </div>
-      <div className="legend-row">
+      <div className="legend-row" title="Land > $50k, Imps/Land < 20%, no economic unit">
         <span className="swatch swatch-outline" style={{ borderColor: TRACK_B_COLOR }} />
-        Track B — vacant taxable land
+        Track B
       </div>
-      <b>General Plan land use</b>
-      {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-        <div key={key} className="legend-row">
-          <span className="swatch" style={{ background: CATEGORY_COLORS[key] }} />
-          {label}
-        </div>
-      ))}
     </div>
   )
 }
@@ -216,13 +210,19 @@ export default function App() {
 
   useEffect(() => {
     if (!parcelIndex?.defaults) return
-    setFilters({
-      cities: [...parcelIndex.defaults.cities],
-      minAcres: parcelIndex.defaults.minAcres,
-      maxAcres: parcelIndex.defaults.maxAcres,
-      onlyLeads: parcelIndex.defaults.onlyLeads,
-      requireBothTracks: parcelIndex.defaults.requireBothTracks,
-    })
+    setFilters(
+      attachExcludedCodes({
+        cities: [...parcelIndex.defaults.cities],
+        minAcres: parcelIndex.defaults.minAcres,
+        maxAcres: parcelIndex.defaults.maxAcres,
+        onlyLeads: parcelIndex.defaults.onlyLeads,
+        requireBothTracks: parcelIndex.defaults.requireBothTracks,
+        excludeClusters: {
+          ...defaultExcludeClusters(),
+          ...parcelIndex.defaults.excludeClusters,
+        },
+      }),
+    )
   }, [parcelIndex])
 
   const counts = useFilterCounts(parcelIndex?.parcels, filters)
@@ -242,7 +242,11 @@ export default function App() {
         {parcelIndex && filters && (
           <>
             <ParcelClusterLayer parcelIndex={parcelIndex} filters={filters} />
-            <AlamedaParcelsLayer parcelIndex={parcelIndex} filters={filters} />
+            <AlamedaParcelsLayer
+              parcelIndex={parcelIndex}
+              filters={filters}
+              onParcelSelect={setSelectedApn}
+            />
             <ViewportParcelQuery
               parcelIndex={parcelIndex}
               filters={filters}
@@ -273,6 +277,7 @@ export default function App() {
         categoryLabels={CATEGORY_LABELS}
         categoryColors={CATEGORY_COLORS}
         listState={listState}
+        parcelIndex={parcelIndex}
         selectedApn={selectedApn}
         onParcelSelect={setSelectedApn}
       />
