@@ -14,7 +14,7 @@ import FilterPanel, {
   passesFilters,
   useFilterCounts,
 } from './FilterPanel.jsx'
-import { attachExcludedCodes, defaultExcludeClusters } from './useCodeClusters.js'
+import { attachExcludedCodes, defaultIncludeClusters } from './useCodeClusters.js'
 import { isSatelliteZoom, styleParcelFeature } from './parcelStyle.js'
 import { attachParcelPopupSelect, parcelDetailLink } from './parcelPopup.js'
 
@@ -217,9 +217,9 @@ export default function App() {
         maxAcres: parcelIndex.defaults.maxAcres,
         onlyLeads: parcelIndex.defaults.onlyLeads,
         requireBothTracks: parcelIndex.defaults.requireBothTracks,
-        excludeClusters: {
-          ...defaultExcludeClusters(),
-          ...parcelIndex.defaults.excludeClusters,
+        includeClusters: {
+          ...defaultIncludeClusters(),
+          ...parcelIndex.defaults.includeClusters,
         },
       }),
     )

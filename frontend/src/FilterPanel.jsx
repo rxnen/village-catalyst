@@ -88,12 +88,12 @@ export default function FilterPanel({ filters, onChange, counts, availableCities
 
   const set = (patch) => onChange(attachExcludedCodes({ ...filters, ...patch }))
 
-  const toggleExcludeCluster = (clusterId) => {
+  const toggleIncludeCluster = (clusterId) => {
     const next = {
-      ...filters.excludeClusters,
-      [clusterId]: !filters.excludeClusters[clusterId],
+      ...filters.includeClusters,
+      [clusterId]: !filters.includeClusters[clusterId],
     }
-    set({ excludeClusters: next })
+    set({ includeClusters: next })
   }
 
   const toggleCity = (city) => {
@@ -155,7 +155,7 @@ export default function FilterPanel({ filters, onChange, counts, availableCities
       <fieldset className="filter-group filter-group-use-codes">
         <legend>Assessor land use</legend>
         <p className="filter-hint filter-hint-block">
-          Checked groups are hidden. Vacant, public, and institutional land stays
+          Checked groups are shown. Vacant, public, and institutional land stays
           visible by default for village-site screening.
         </p>
         {USE_CODE_CLUSTERS.map((cluster) => (
@@ -166,8 +166,8 @@ export default function FilterPanel({ filters, onChange, counts, availableCities
           >
             <input
               type="checkbox"
-              checked={filters.excludeClusters[cluster.id]}
-              onChange={() => toggleExcludeCluster(cluster.id)}
+              checked={filters.includeClusters[cluster.id]}
+              onChange={() => toggleIncludeCluster(cluster.id)}
             />
             {cluster.label}
           </label>
