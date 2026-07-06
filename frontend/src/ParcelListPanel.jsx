@@ -5,7 +5,7 @@ import {
   formatTracks,
 } from './FilterPanel.jsx'
 import { QUERY_LIMIT } from './ViewportParcelQuery.jsx'
-import { useCodeTierColor, useCodeTierLabel, useCodeRank as getUseCodeRank } from './useCodeRank.js'
+import { useCodeTierColor, useCodeTierLabel, effectiveUseCodeRank } from './useCodeRank.js'
 
 function trackColor(tracks) {
   if (tracks === 'Track A + Track B') return BOTH_TRACKS_COLOR
@@ -46,7 +46,7 @@ function ParcelDetail({
   const landUse = parcel?.land_use
   const tracks = listItem?.tracks || formatTracks(parcel)
   const useCode = parcel?.use_code ?? listItem?.useCode
-  const useCodeRank = listItem?.useCodeRank ?? getUseCodeRank(useCode)
+  const useCodeRank = listItem?.useCodeRank ?? effectiveUseCodeRank(parcel)
   const addressItem = listItem ?? {
     address: parcel?.address?.trim() || 'No address',
     city: parcel?.city,
@@ -100,6 +100,12 @@ function ParcelDetail({
         {parcel?.imps_land_ratio != null && (
           <DetailRow label="Improvements / land">
             {(parcel.imps_land_ratio * 100).toFixed(1)}%
+          </DetailRow>
+        )}
+
+        {parcel?.coverage_ratio != null && (
+          <DetailRow label="Footprint coverage">
+            {(parcel.coverage_ratio * 100).toFixed(1)}%
           </DetailRow>
         )}
 

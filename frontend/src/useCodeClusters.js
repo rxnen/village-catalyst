@@ -19,10 +19,10 @@ export const USE_CODE_CLUSTERS = [
   },
   {
     id: 'public_government',
-    label: 'Public & government land',
-    hint: 'Exempt agency and government-owned vacant parcels',
+    label: 'Government vacant land',
+    hint: 'Government-owned vacant parcels (6000, 6001)',
     defaultIncluded: true,
-    codes: [300, 6000, 6001],
+    codes: [6000, 6001],
   },
   {
     id: 'institutional',
@@ -133,11 +133,11 @@ export const USE_CODE_CLUSTERS = [
   },
   {
     id: 'common_areas_unknown',
-    label: 'Common areas & unknown use',
-    hint: 'HOA common areas, partial tract lots, and unclassified codes',
+    label: 'Common areas, exempt agency & unknown',
+    hint: 'HOA common areas, exempt agency (ownership only), partial tract lots, and unclassified codes',
     defaultIncluded: false,
     codes: [
-      0, 840, 900, 940, 1166, 1190, 1590, 1595, 1690, 1890, 3990, 7090,
+      0, 300, 840, 900, 940, 1166, 1190, 1590, 1595, 1690, 1890, 3990, 7090,
       7390, 7391, 7392, 7395, 7790, 9491, 9999,
     ],
   },
@@ -167,7 +167,16 @@ export function attachExcludedCodes(filters) {
   }
 }
 
-export function parcelExcludedByUseCode(parcel, excludedUseCodes) {
+export function parcelExcludedByUseCode(parcel, excludedUseCodes, maxCoverageRatio) {
   if (!excludedUseCodes?.size || parcel?.use_code == null) return false
-  return excludedUseCodes.has(String(parcel.use_code))
+  const code = String(parcel.use_code)
+  if (
+    code === '300' &&
+    maxCoverageRatio != null &&
+    parcel.coverage_ratio != null &&
+    parcel.coverage_ratio < maxCoverageRatio
+  ) {
+    return false
+  }
+  return excludedUseCodes.has(code)
 }
