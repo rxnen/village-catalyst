@@ -6,15 +6,13 @@ import { ViewportParcelQuery } from './ViewportParcelQuery.jsx'
 import { MapContainer, TileLayer, GeoJSON, LayersControl, useMap } from 'react-leaflet'
 import { featureLayer } from 'esri-leaflet'
 import FilterPanel, {
-  BOTH_TRACKS_COLOR,
-  TRACK_A_COLOR,
-  TRACK_B_COLOR,
   formatTracks,
   parcelsWhere,
   passesFilters,
   useFilterCounts,
 } from './FilterPanel.jsx'
 import { attachExcludedCodes, defaultIncludeClusters } from './useCodeClusters.js'
+import { HIERARCHY_TIERS, parcelScore } from './parcelScore.js'
 import { isSatelliteZoom, styleParcelFeature } from './parcelStyle.js'
 import { attachParcelPopupSelect, parcelDetailLink } from './parcelPopup.js'
 
@@ -115,7 +113,10 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
         if (!parcel || !passesFilters(parcel, filters)) {
           return { opacity: 0, fillOpacity: 0, weight: 0 }
         }
-        return styleParcelFeature(parcel, { categoryColor, satellite })
+        return styleParcelFeature(parcel, {
+          satellite,
+          maxCoverageRatio: filters.maxCoverageRatio,
+        })
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties
@@ -136,13 +137,28 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
           parcel.imps_land_ratio != null
             ? `<br/>Imps/Land: ${(parcel.imps_land_ratio * 100).toFixed(1)}%`
             : ''
+        const coverageBlock =
+          parcel.coverage_ratio != null
+            ? `<br/>Footprint coverage: ${(parcel.coverage_ratio * 100).toFixed(1)}%`
+            : ''
         const trackBlock = tracks ? `<br/><b>${tracks}</b>` : ''
+        const { total: scoreTotal, breakdown } = parcelScore(
+          parcel,
+          filters.maxCoverageRatio,
+        )
+        const scoreBlock =
+          `<br/><b>Vacancy score: ${scoreTotal}</b>` +
+          (breakdown.synergy
+            ? ' <i>(includes synergy bonus)</i>'
+            : '')
         layer.bindPopup(
           `<b>${p.APN ?? 'Unknown APN'}</b><br/>` +
             `${p.SitusAddress ?? 'No address'}<br/>` +
             cityLine +
             `<br/>${parcel.area_acres.toFixed(2)} acres` +
             ratioBlock +
+            coverageBlock +
+            scoreBlock +
             trackBlock +
             landUseBlock +
             parcelDetailLink(p.APN),
@@ -186,19 +202,13 @@ function ZoomBasemap() {
 
 function Legend() {
   return (
-    <div className="legend legend-compact" title="Parcel outline colors for lead scoring">
-      <div className="legend-row" title="Passes Track A and Track B">
-        <span className="swatch swatch-outline" style={{ borderColor: BOTH_TRACKS_COLOR }} />
-        Both tracks
-      </div>
-      <div className="legend-row" title="OTEX > 0, or HOEX = 0 and mailing city ≠ situs city">
-        <span className="swatch swatch-outline" style={{ borderColor: TRACK_A_COLOR }} />
-        Track A
-      </div>
-      <div className="legend-row" title="Land > $50k, Imps/Land < 20%, no economic unit">
-        <span className="swatch swatch-outline" style={{ borderColor: TRACK_B_COLOR }} />
-        Track B
-      </div>
+    <div className="legend legend-compact" title="Parcel outline colors by vacancy score">
+      {HIERARCHY_TIERS.map((tier) => (
+        <div key={tier.id} className="legend-row" title={tier.hint}>
+          <span className="swatch swatch-outline" style={{ borderColor: tier.color }} />
+          {tier.label} ({tier.minScore}+)
+        </div>
+      ))}
     </div>
   )
 }
@@ -215,6 +225,7 @@ export default function App() {
         cities: [...parcelIndex.defaults.cities],
         minAcres: parcelIndex.defaults.minAcres,
         maxAcres: parcelIndex.defaults.maxAcres,
+        maxCoverageRatio: parcelIndex.defaults.maxCoverageRatio ?? 0.2,
         onlyLeads: parcelIndex.defaults.onlyLeads,
         requireBothTracks: parcelIndex.defaults.requireBothTracks,
         includeClusters: {

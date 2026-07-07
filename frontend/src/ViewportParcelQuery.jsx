@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
 import { useMap } from 'react-leaflet'
 import { formatTracks, leadRank, passesFilters } from './FilterPanel.jsx'
-import { parcelListRank, useCodeRank } from './useCodeRank.js'
+import {
+  effectiveUseCodeRank,
+  parcelListRank,
+} from './useCodeRank.js'
 import { captureMapView, mapViewChangedSignificantly } from './mapViewThreshold.js'
 
 export const QUERY_LIMIT = 2000
@@ -27,13 +30,16 @@ function buildListItems(parcels, filters, bounds) {
       useCodeLabel: parcel.use_code_label,
       tracks: formatTracks(parcel),
       leadRank: leadRank(parcel),
-      useCodeRank: useCodeRank(parcel.use_code),
+      useCodeRank: effectiveUseCodeRank(parcel),
+      coverageRatio: parcel.coverage_ratio,
       areaAcres: parcel.area_acres,
     })
   }
 
   matches.sort((a, b) => {
-    const rankDiff = parcelListRank(a) - parcelListRank(b)
+    const rankDiff =
+      parcelListRank(a, filters.maxCoverageRatio) -
+      parcelListRank(b, filters.maxCoverageRatio)
     if (rankDiff !== 0) return rankDiff
     return a.address.localeCompare(b.address, undefined, { sensitivity: 'base' })
   })

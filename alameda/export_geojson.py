@@ -23,12 +23,14 @@ PROCESSED = ALAMEDA_DIR / "processed"
 PARCELS_GEOM = PROCESSED / "parcels.geojson"
 LAND_USE_CACHE = PROCESSED / "land_use.geojson"
 CROSSWALK = PROCESSED / "parcel_landuse_crosswalk.csv"
+BUILDING_COVERAGE = PROCESSED / "parcel_building_coverage.csv"
 FILTERED_PARCELS = ALAMEDA_DIR / "filtered" / "Parcels_Target_Cities.csv"
 USE_CODES = ALAMEDA_DIR / "raw" / "UseCodes.csv"
 OUT_DIR = ALAMEDA_DIR.parent / "frontend" / "public" / "alameda"
 
 AREA_CRS = "EPSG:26910"
 SIMPLIFY_M = 5.0
+DEFAULT_MAX_COVERAGE_RATIO = 0.2
 
 
 def load_use_code_lookup() -> dict[str, str]:
@@ -99,6 +101,24 @@ def build_parcel_index() -> dict:
                 "overlap_frac": float(row.overlap_frac),
             }
 
+    coverage_by_apn: dict[str, float] = {}
+    if BUILDING_COVERAGE.exists():
+        cov = pd.read_csv(BUILDING_COVERAGE)
+        cov = (
+            cov.groupby("APN", as_index=False)
+            .agg(
+                building_footprint_sq_m=("building_footprint_sq_m", "sum"),
+                parcel_area_sq_m=("parcel_area_sq_m", "sum"),
+            )
+        )
+        cov["coverage_ratio"] = cov["building_footprint_sq_m"] / cov["parcel_area_sq_m"]
+        coverage_by_apn = {
+            row.APN: float(row.coverage_ratio)
+            for row in cov.itertuples(index=False)
+        }
+    else:
+        print("warning: parcel_building_coverage.csv not found; run join_buildings_to_parcels.py")
+
     parcels: dict[str, dict] = {}
     excluded = track_a_n = track_b_n = both_n = 0
     for row in merged.itertuples(index=False):
@@ -141,6 +161,9 @@ def build_parcel_index() -> dict:
             entry["lng"] = float(row.centroid_lng)
         if leads["imps_land_ratio"] is not None:
             entry["imps_land_ratio"] = leads["imps_land_ratio"]
+        coverage_ratio = coverage_by_apn.get(row.APN)
+        if coverage_ratio is not None:
+            entry["coverage_ratio"] = coverage_ratio
         lu = land_use_by_apn.get(row.APN)
         entry["land_use"] = lu if lu else {"category": "unmatched"}
         use_code = normalize_use_code(row.UseCode)
@@ -161,6 +184,7 @@ def build_parcel_index() -> dict:
             "cities": list(TARGET_CITIES),
             "minAcres": MIN_ACRES,
             "maxAcres": MAX_ACRES,
+            "maxCoverageRatio": DEFAULT_MAX_COVERAGE_RATIO,
             "onlyLeads": False,
             "requireBothTracks": False,
         },

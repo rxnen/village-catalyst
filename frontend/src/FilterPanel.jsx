@@ -17,19 +17,6 @@ export function passesBothTracks(parcel) {
   return parcel?.track_a && parcel?.track_b
 }
 
-export function leadOutline(parcel) {
-  if (passesBothTracks(parcel)) {
-    return { color: BOTH_TRACKS_COLOR, weight: 3 }
-  }
-  if (parcel?.track_a) {
-    return { color: TRACK_A_COLOR, weight: 2.5 }
-  }
-  if (parcel?.track_b) {
-    return { color: TRACK_B_COLOR, weight: 2.5 }
-  }
-  return null
-}
-
 export function passesFilters(parcel, filters) {
   if (!parcel) return false
   if (!filters.cities.includes(parcel.city)) return false
@@ -39,7 +26,15 @@ export function passesFilters(parcel, filters) {
   }
   if (filters.onlyLeads && !isLead(parcel)) return false
   if (filters.requireBothTracks && !passesBothTracks(parcel)) return false
-  if (parcelExcludedByUseCode(parcel, filters._excludedUseCodes)) return false
+  if (
+    parcelExcludedByUseCode(
+      parcel,
+      filters._excludedUseCodes,
+      filters.maxCoverageRatio,
+    )
+  ) {
+    return false
+  }
   return true
 }
 
@@ -172,6 +167,31 @@ export default function FilterPanel({ filters, onChange, counts, availableCities
             {cluster.label}
           </label>
         ))}
+      </fieldset>
+
+      <fieldset className="filter-group">
+        <legend>Building footprint coverage</legend>
+        <p className="filter-hint filter-hint-block">
+          Coverage ratio is the share of the parcel area covered by Microsoft
+          building footprints (0 = no detected structures, 1 = fully covered).
+          Parcels are ranked, not hidden, by this value. Best candidates have
+          low coverage, a top-tier use code, and both lead tracks. Use code 300
+          (exempt public agency) can appear when coverage is low, but is never
+          treated as a top-tier use signal.
+        </p>
+        <div className="filter-range">
+          <label>
+            Max ratio (ranking)
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              value={filters.maxCoverageRatio}
+              onChange={(e) => set({ maxCoverageRatio: Number(e.target.value) })}
+            />
+          </label>
+        </div>
       </fieldset>
 
       <fieldset className="filter-group">

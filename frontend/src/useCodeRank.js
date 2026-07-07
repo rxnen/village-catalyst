@@ -1,7 +1,7 @@
 /**
  * Rough suitability tiers for tiny-village land (lower rank = better fit).
  *
- * 0 — Vacant public / city-owned institutional land
+ * 0 — Vacant government / institutional land (confirmed vacant)
  * 1 — Vacant developable land (res, commercial, industrial, rural)
  * 2 — Institutional excess potential (school, church, cemetery, etc.)
  * 3 — Marginal: common areas, parking, partial build, unknown
@@ -10,8 +10,7 @@
  */
 
 const TIER_BY_CODE = {
-  // Tier 0 — fallow public / exempt agency land
-  300: 0,
+  // Tier 0 — confirmed vacant government / institutional land
   6000: 0,
   6001: 0,
   6100: 0,
@@ -41,8 +40,9 @@ const TIER_BY_CODE = {
   7900: 2,
   9910: 2,
 
-  // Tier 3 — common areas, parking, partial vacant, misc low fit
+  // Tier 3 — common areas, parking, partial vacant, ownership-only codes
   0: 3,
+  300: 3, // Exempt public agency — ownership, not vacancy
   840: 3,
   900: 3,
   940: 3,
@@ -93,10 +93,29 @@ const TIER_LABELS = [
   'Active buildings',
 ]
 
+/** Tier 0–1 use codes count as a positive vacancy signal in ranking. */
+export const TOP_USE_CODE_MAX_RANK = 1
+
 export function useCodeRank(code) {
   if (code == null || code === '') return 5
   const key = String(code)
   return TIER_BY_CODE[key] ?? 5
+}
+
+export function effectiveUseCodeRank(parcel) {
+  const code = parcel?.use_code
+  if (String(code) === '300') {
+    return 3
+  }
+  return useCodeRank(code)
+}
+
+export function passesLowCoverage(parcel, maxCoverageRatio) {
+  return parcel?.coverage_ratio != null && parcel.coverage_ratio < maxCoverageRatio
+}
+
+export function isTopUseCode(parcel) {
+  return effectiveUseCodeRank(parcel) <= TOP_USE_CODE_MAX_RANK
 }
 
 export function useCodeTierLabel(code) {
@@ -111,7 +130,23 @@ export function useCodeTierColor(rank) {
   return '#c62828'
 }
 
-/** Lower value sorts higher in the parcel list. */
-export function parcelListRank(item) {
-  return item.leadRank * 10 + item.useCodeRank
+/**
+ * Lower value sorts higher in the parcel list.
+ * Band 0: low coverage + top-tier use code + both lead tracks.
+ */
+export function parcelListRank(item, maxCoverageRatio) {
+  const lowCoverage =
+    item.coverageRatio != null && item.coverageRatio < maxCoverageRatio
+  const topUseCode = item.useCodeRank <= TOP_USE_CODE_MAX_RANK
+  const bothTracks = item.leadRank === 0
+
+  let band = 5
+  if (bothTracks && topUseCode && lowCoverage) band = 0
+  else if (bothTracks && topUseCode) band = 1
+  else if (bothTracks && lowCoverage) band = 2
+  else if (topUseCode && lowCoverage) band = 2
+  else if (bothTracks) band = 3
+  else if (topUseCode || lowCoverage) band = 4
+
+  return band * 1000 + item.leadRank * 10 + item.useCodeRank
 }
