@@ -1,9 +1,14 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   USE_CODE_CLUSTERS,
   attachExcludedCodes,
   parcelExcludedByUseCode,
 } from './useCodeClusters.js'
+import { CLEANUP_STATUS_TIERS } from './envirostor.js'
+import {
+  DEFAULT_ENV_THRESHOLDS,
+  parcelExcludedByEnv,
+} from './envirostorProximity.js'
 
 export const TRACK_A_COLOR = '#f9a825'
 export const TRACK_B_COLOR = '#00897b'
@@ -35,6 +40,7 @@ export function passesFilters(parcel, filters) {
   ) {
     return false
   }
+  if (parcelExcludedByEnv(parcel, filters)) return false
   return true
 }
 
@@ -78,7 +84,425 @@ function cityLabel(city) {
   return city[0] + city.slice(1).toLowerCase()
 }
 
-export default function FilterPanel({ filters, onChange, counts, availableCities }) {
+function formatAcres(n) {
+  if (n == null || Number.isNaN(n)) return '—'
+  const rounded = Math.round(n * 100) / 100
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded)
+}
+
+function summarizeItems(items, maxVisible = 1) {
+  if (!items.length) return 'None'
+  if (items.length <= maxVisible) return items.join(', ')
+  const shown = items.slice(0, maxVisible).join(', ')
+  return `${shown} +${items.length - maxVisible}`
+}
+
+function IconPin() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"
+      />
+    </svg>
+  )
+}
+
+function IconRuler() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M20.6 6.6 17.4 3.4a1.5 1.5 0 0 0-2.1 0L3.4 15.3a1.5 1.5 0 0 0 0 2.1l3.2 3.2a1.5 1.5 0 0 0 2.1 0L20.6 8.7a1.5 1.5 0 0 0 0-2.1zM8.1 18.9l-3-3 2.1-2.1.9.9 1.1-1.1-.9-.9 1.1-1.1.9.9 1.1-1.1-.9-.9 1.1-1.1 3 3-7.5 7.5z"
+      />
+    </svg>
+  )
+}
+
+function IconBuilding() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v4h5a1 1 0 0 1 1 1v11h-2v-3h-4v3H4zm2-2h4v-2H6v2zm0-4h4v-2H6v2zm0-4h4V9H6v2zm0-4h4V5H6v2zm8 8h4v-2h-4v2zm0-4h4v-2h-4v2z"
+      />
+    </svg>
+  )
+}
+
+function IconFootprint() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 20h7V9H4v11zm9 0h7V4h-7v16zM6 11h3v2H6v-2zm0 4h3v2H6v-2zm9-8h3v2h-3V7zm0 4h3v2h-3v-2zm0 4h3v2h-3v-2z"
+      />
+    </svg>
+  )
+}
+
+function IconTracks() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 2 4.5 5v6.5c0 4.7 3.2 9.1 7.5 10.5 4.3-1.4 7.5-5.8 7.5-10.5V5L12 2zm0 2.2 6 2.4v5c0 3.6-2.4 7-6 8.3-3.6-1.3-6-4.7-6-8.3v-5l6-2.4zM11 7h2v6h-2V7zm0 8h2v2h-2v-2z"
+      />
+    </svg>
+  )
+}
+
+function IconHazard() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 3.2 2.5 20h19L12 3.2zm0 3.3 6.6 11.5H5.4L12 6.5zM11 11h2v4h-2v-4zm0 5h2v2h-2v-2z"
+      />
+    </svg>
+  )
+}
+
+const FILTER_SECTIONS = [
+  {
+    id: 'location',
+    label: 'Location',
+    overviewLabel: 'Cities',
+    icon: IconPin,
+  },
+  {
+    id: 'size',
+    label: 'Parcel size',
+    overviewLabel: 'Size',
+    icon: IconRuler,
+  },
+  {
+    id: 'landUse',
+    label: 'Land use',
+    overviewLabel: 'Land use',
+    icon: IconBuilding,
+  },
+  {
+    id: 'buildings',
+    label: 'Buildings',
+    overviewLabel: 'Max ratio',
+    icon: IconFootprint,
+  },
+  {
+    id: 'leads',
+    label: 'Lead tracks',
+    overviewLabel: 'Leads',
+    icon: IconTracks,
+  },
+  {
+    id: 'environment',
+    label: 'Environment',
+    overviewLabel: 'Hazards',
+    icon: IconHazard,
+  },
+]
+
+function overviewValue(sectionId, filters) {
+  if (!filters) return '—'
+
+  if (sectionId === 'location') {
+    const labels = filters.cities.map(cityLabel)
+    return summarizeItems(labels, 1)
+  }
+
+  if (sectionId === 'size') {
+    return `${formatAcres(filters.minAcres)}–${formatAcres(filters.maxAcres)} ac`
+  }
+
+  if (sectionId === 'landUse') {
+    const selected = USE_CODE_CLUSTERS.filter(
+      (cluster) => filters.includeClusters[cluster.id],
+    ).map((cluster) => cluster.label)
+    return summarizeItems(selected, 1)
+  }
+
+  if (sectionId === 'buildings') {
+    return String(filters.maxCoverageRatio)
+  }
+
+  if (sectionId === 'leads') {
+    if (filters.requireBothTracks && filters.onlyLeads) return 'Both tracks'
+    if (filters.onlyLeads) return 'Leads only'
+    return 'All parcels'
+  }
+
+  if (sectionId === 'environment') {
+    const s = filters.envStrongMeters
+    const m = filters.envMediumMeters
+    const n = filters.envNoteMeters
+    return `${s}/${m}/${n} m`
+  }
+
+  return '—'
+}
+
+function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleCity, toggleIncludeCluster }) {
+  if (sectionId === 'location') {
+    return (
+      <>
+        <h2 className="filters-detail-title">Location</h2>
+        <p className="filters-detail-desc">
+          Which cities&apos; assessor rolls feed the search. Each one adds its
+          full roll before other filters run.
+        </p>
+        <div className="filters-detail-controls">
+          {availableCities.map((city) => (
+            <label key={city} className="filter-check">
+              <input
+                type="checkbox"
+                checked={filters.cities.includes(city)}
+                onChange={() => toggleCity(city)}
+              />
+              {cityLabel(city)}
+            </label>
+          ))}
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'size') {
+    return (
+      <>
+        <h2 className="filters-detail-title">Parcel size</h2>
+        <p className="filters-detail-desc">
+          Keep parcels whose assessed lot area falls between these acreage
+          bounds. Values are inclusive.
+        </p>
+        <div className="filters-detail-controls">
+          <div className="filter-range">
+            <label>
+              Min (acres)
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={filters.minAcres}
+                onChange={(e) => set({ minAcres: Number(e.target.value) })}
+              />
+            </label>
+            <label>
+              Max (acres)
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={filters.maxAcres}
+                onChange={(e) => set({ maxAcres: Number(e.target.value) })}
+              />
+            </label>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'landUse') {
+    return (
+      <>
+        <h2 className="filters-detail-title">Land use</h2>
+        <p className="filters-detail-desc">
+          Checked assessor land-use groups are shown. Vacant, public, and
+          institutional land stays visible by default for village-site
+          screening.
+        </p>
+        <div className="filters-detail-controls filters-detail-clusters">
+          {USE_CODE_CLUSTERS.map((cluster) => (
+            <label
+              key={cluster.id}
+              className="filter-check filter-check-cluster"
+              title={cluster.hint}
+            >
+              <input
+                type="checkbox"
+                checked={filters.includeClusters[cluster.id]}
+                onChange={() => toggleIncludeCluster(cluster.id)}
+              />
+              <span>
+                <span className="filter-cluster-label">{cluster.label}</span>
+                <span className="filter-cluster-hint">{cluster.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'buildings') {
+    return (
+      <>
+        <h2 className="filters-detail-title">Buildings</h2>
+        <p className="filters-detail-desc">
+          Coverage ratio is the share of the parcel area covered by Microsoft
+          building footprints (0 = no detected structures, 1 = fully covered).
+          Parcels are ranked, not hidden, by this value. Best candidates have
+          low coverage, a top-tier use code, and both lead tracks. Use code 300
+          (exempt public agency) can appear when coverage is low, but is never
+          treated as a top-tier use signal.
+        </p>
+        <div className="filters-detail-controls">
+          <div className="filter-range">
+            <label>
+              Max ratio (ranking)
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.01"
+                value={filters.maxCoverageRatio}
+                onChange={(e) => set({ maxCoverageRatio: Number(e.target.value) })}
+              />
+            </label>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'leads') {
+    return (
+      <>
+        <h2 className="filters-detail-title">Lead tracks</h2>
+        <p className="filters-detail-desc">
+          Track A: OTEX &gt; 0, or HOEX = 0 and mailing city ≠ situs city.
+          Track B: Land &gt; $50k, Imps/Land &lt; 20%, no economic unit.
+        </p>
+        <div className="filters-detail-controls">
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={filters.onlyLeads}
+              onChange={(e) => set({ onlyLeads: e.target.checked })}
+            />
+            Only lead parcels (Track A or B)
+          </label>
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={filters.requireBothTracks}
+              onChange={(e) => set({ requireBothTracks: e.target.checked })}
+              disabled={!filters.onlyLeads}
+            />
+            Only strongest leads (both tracks)
+          </label>
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'environment') {
+    const setMeters = (key, raw) => {
+      const n = Number(raw)
+      set({ [key]: Number.isFinite(n) && n >= 0 ? n : 0 })
+    }
+    return (
+      <>
+        <h2 className="filters-detail-title">Environment</h2>
+        <p className="filters-detail-desc">
+          Flag parcels near EnviroStor cleanup sites by distance to the parcel
+          edge (0 m if the site is on the parcel). Strong and medium hits hide
+          parcels from results; note hits are recorded only (they do not hide).
+          Set a distance to 0 to turn that tier off.
+        </p>
+        <div className="filters-detail-controls">
+          <div className="filter-env-thresholds">
+            <label className="filter-field" title={CLEANUP_STATUS_TIERS.strong.hint}>
+              <span className="filter-env-label">
+                <span
+                  className="swatch swatch-dot"
+                  style={{ background: CLEANUP_STATUS_TIERS.strong.color }}
+                />
+                Strong flag
+              </span>
+              <span className="filter-env-input-row">
+                <input
+                  type="number"
+                  min="0"
+                  step="5"
+                  value={filters.envStrongMeters}
+                  onChange={(e) => setMeters('envStrongMeters', e.target.value)}
+                />
+                <span className="filter-env-unit">m</span>
+              </span>
+            </label>
+            <label className="filter-field" title={CLEANUP_STATUS_TIERS.medium.hint}>
+              <span className="filter-env-label">
+                <span
+                  className="swatch swatch-dot"
+                  style={{ background: CLEANUP_STATUS_TIERS.medium.color }}
+                />
+                Medium flag
+              </span>
+              <span className="filter-env-input-row">
+                <input
+                  type="number"
+                  min="0"
+                  step="5"
+                  value={filters.envMediumMeters}
+                  onChange={(e) => setMeters('envMediumMeters', e.target.value)}
+                />
+                <span className="filter-env-unit">m</span>
+              </span>
+            </label>
+            <label className="filter-field" title={CLEANUP_STATUS_TIERS.note.hint}>
+              <span className="filter-env-label">
+                <span
+                  className="swatch swatch-dot"
+                  style={{ background: CLEANUP_STATUS_TIERS.note.color }}
+                />
+                Note only
+              </span>
+              <span className="filter-env-input-row">
+                <input
+                  type="number"
+                  min="0"
+                  step="5"
+                  value={filters.envNoteMeters}
+                  onChange={(e) => setMeters('envNoteMeters', e.target.value)}
+                />
+                <span className="filter-env-unit">m</span>
+              </span>
+            </label>
+          </div>
+          <p className="filter-hint filter-hint-block">
+            Defaults: strong {DEFAULT_ENV_THRESHOLDS.envStrongMeters} m, medium{' '}
+            {DEFAULT_ENV_THRESHOLDS.envMediumMeters} m, note off. Distances are
+            measured from the cleanup-site point to the nearest parcel boundary
+            edge.
+          </p>
+        </div>
+      </>
+    )
+  }
+
+  return null
+}
+
+export default function FilterPanel({
+  filters,
+  onChange,
+  counts,
+  availableCities,
+  expanded,
+  onExpandedChange,
+}) {
+  const [activeSection, setActiveSection] = useState('location')
+
+  useEffect(() => {
+    if (!expanded) return
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onExpandedChange(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [expanded, onExpandedChange])
+
   if (!filters) return null
 
   const set = (patch) => onChange(attachExcludedCodes({ ...filters, ...patch }))
@@ -98,126 +522,77 @@ export default function FilterPanel({ filters, onChange, counts, availableCities
     set({ cities: next })
   }
 
-  return (
-    <div className="filters">
-      <b>Filters</b>
-      <p className="filter-count">
-        Showing {counts.visible.toLocaleString()} of {counts.total.toLocaleString()} parcels
-        <br />
-        {counts.leads.toLocaleString()} leads ({counts.both.toLocaleString()} pass both tracks)
-      </p>
+  if (expanded) {
+    return (
+      <div className="filters-expanded" role="dialog" aria-label="Filters">
+        <aside className="filters-nav">
+          {FILTER_SECTIONS.map((section) => {
+            const Icon = section.icon
+            const active = activeSection === section.id
+            return (
+              <button
+                key={section.id}
+                type="button"
+                className={`filters-nav-item${active ? ' filters-nav-item-active' : ''}`}
+                onClick={() => setActiveSection(section.id)}
+              >
+                <Icon />
+                {section.label}
+              </button>
+            )
+          })}
+        </aside>
 
-      <fieldset className="filter-group">
-        <legend>Cities</legend>
-        {availableCities.map((city) => (
-          <label key={city} className="filter-check">
-            <input
-              type="checkbox"
-              checked={filters.cities.includes(city)}
-              onChange={() => toggleCity(city)}
-            />
-            {cityLabel(city)}
-          </label>
-        ))}
-      </fieldset>
-
-      <fieldset className="filter-group">
-        <legend>Parcel size (acres)</legend>
-        <div className="filter-range">
-          <label>
-            Min
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={filters.minAcres}
-              onChange={(e) => set({ minAcres: Number(e.target.value) })}
-            />
-          </label>
-          <label>
-            Max
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={filters.maxAcres}
-              onChange={(e) => set({ maxAcres: Number(e.target.value) })}
-            />
-          </label>
-        </div>
-      </fieldset>
-
-      <fieldset className="filter-group filter-group-use-codes">
-        <legend>Assessor land use</legend>
-        <p className="filter-hint filter-hint-block">
-          Checked groups are shown. Vacant, public, and institutional land stays
-          visible by default for village-site screening.
-        </p>
-        {USE_CODE_CLUSTERS.map((cluster) => (
-          <label
-            key={cluster.id}
-            className="filter-check filter-check-cluster"
-            title={cluster.hint}
+        <section className="filters-detail">
+          <button
+            type="button"
+            className="filters-collapse-btn"
+            onClick={() => onExpandedChange(false)}
           >
-            <input
-              type="checkbox"
-              checked={filters.includeClusters[cluster.id]}
-              onChange={() => toggleIncludeCluster(cluster.id)}
+            Collapse filters
+          </button>
+          <div className="filters-detail-body">
+            <FilterSectionDetail
+              sectionId={activeSection}
+              filters={filters}
+              set={set}
+              availableCities={availableCities}
+              toggleCity={toggleCity}
+              toggleIncludeCluster={toggleIncludeCluster}
             />
-            {cluster.label}
-          </label>
-        ))}
-      </fieldset>
+          </div>
+        </section>
+      </div>
+    )
+  }
 
-      <fieldset className="filter-group">
-        <legend>Building footprint coverage</legend>
-        <p className="filter-hint filter-hint-block">
-          Coverage ratio is the share of the parcel area covered by Microsoft
-          building footprints (0 = no detected structures, 1 = fully covered).
-          Parcels are ranked, not hidden, by this value. Best candidates have
-          low coverage, a top-tier use code, and both lead tracks. Use code 300
-          (exempt public agency) can appear when coverage is low, but is never
-          treated as a top-tier use signal.
-        </p>
-        <div className="filter-range">
-          <label>
-            Max ratio (ranking)
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              value={filters.maxCoverageRatio}
-              onChange={(e) => set({ maxCoverageRatio: Number(e.target.value) })}
-            />
-          </label>
+  return (
+    <aside className="filters-sidebar" aria-label="Filter overview">
+      <div className="filters-overview">
+        <div className="filters-overview-header">
+          <b>Filters</b>
+          <p className="filter-count">
+            {counts.visible.toLocaleString()} of {counts.total.toLocaleString()} parcels
+          </p>
         </div>
-      </fieldset>
 
-      <fieldset className="filter-group">
-        <legend>Lead tracks</legend>
-        <p className="filter-hint filter-hint-block">
-          Track A: OTEX &gt; 0, or HOEX = 0 and mailing city ≠ situs city.
-          Track B: Land &gt; $50k, Imps/Land &lt; 20%, no economic unit.
-        </p>
-        <label className="filter-check">
-          <input
-            type="checkbox"
-            checked={filters.onlyLeads}
-            onChange={(e) => set({ onlyLeads: e.target.checked })}
-          />
-          Only lead parcels (Track A or B)
-        </label>
-        <label className="filter-check">
-          <input
-            type="checkbox"
-            checked={filters.requireBothTracks}
-            onChange={(e) => set({ requireBothTracks: e.target.checked })}
-            disabled={!filters.onlyLeads}
-          />
-          Only strongest leads (both tracks)
-        </label>
-      </fieldset>
-    </div>
+        <dl className="filters-overview-list">
+          {FILTER_SECTIONS.map((section) => (
+            <div key={section.id} className="filters-overview-row">
+              <dt>{section.overviewLabel}</dt>
+              <dd>{overviewValue(section.id, filters)}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <button
+        type="button"
+        className="filters-expand-btn"
+        onClick={() => onExpandedChange(true)}
+      >
+        Expand filters
+      </button>
+    </aside>
   )
 }

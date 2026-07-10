@@ -209,6 +209,25 @@ def main() -> None:
           f"{land_use_path.stat().st_size / 1e6:.1f} MB")
 
     index = build_parcel_index()
+    print("Annotating EnviroStor edge distances…")
+    from annotate_env_distances import annotate_env_distances
+    from envirostor import cleanup_sites_from_geojson, fetch_cleanup_geojson
+
+    geom = gpd.read_file(PARCELS_GEOM, columns=["APN", "geometry"])
+    sites = cleanup_sites_from_geojson(fetch_cleanup_geojson())
+    stats = annotate_env_distances(index["parcels"], geom, sites)
+    print(
+        f"  env: {stats['hit_parcels']:,} parcels near cleanup sites "
+        f"(strong {stats['strong']:,} / medium {stats['medium']:,} / note {stats['note']:,})"
+    )
+    index.setdefault("defaults", {}).update(
+        {
+            "envStrongMeters": 50,
+            "envMediumMeters": 25,
+            "envNoteMeters": 0,
+        }
+    )
+
     index_path = OUT_DIR / "parcel_index.json"
     index_path.write_text(json.dumps(index))
     print(f"{index_path.name}: {len(index['parcels']):,} parcels, "

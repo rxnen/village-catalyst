@@ -5,6 +5,7 @@ import {
   formatTracks,
 } from './FilterPanel.jsx'
 import { QUERY_LIMIT } from './ViewportParcelQuery.jsx'
+import { CLEANUP_STATUS_TIERS } from './envirostor.js'
 import { useCodeTierColor, useCodeTierLabel, effectiveUseCodeRank } from './useCodeRank.js'
 
 function trackColor(tracks) {
@@ -25,11 +26,112 @@ function formatCity(city) {
   return city[0] + city.slice(1).toLowerCase()
 }
 
+function formatEnvMeters(meters) {
+  if (meters == null || Number.isNaN(meters)) return '—'
+  if (meters <= 0) return 'On parcel'
+  if (meters < 10) return `${meters.toFixed(1)} m`
+  return `${Math.round(meters)} m`
+}
+
+function envThresholdForTier(filters, tier) {
+  if (!filters) return null
+  if (tier === 'strong') return Number(filters.envStrongMeters)
+  if (tier === 'medium') return Number(filters.envMediumMeters)
+  if (tier === 'note') return Number(filters.envNoteMeters)
+  return null
+}
+
+function siteHitsThreshold(site, filters) {
+  const threshold = envThresholdForTier(filters, site.tier)
+  if (!Number.isFinite(threshold) || threshold <= 0) return false
+  return site.meters != null && site.meters <= threshold
+}
+
+function envirostorProfileUrl(id) {
+  if (!id) return null
+  return `https://www.envirostor.dtsc.ca.gov/public/profile_report?global_id=${encodeURIComponent(id)}`
+}
+
 function DetailRow({ label, children }) {
   return (
     <div className="parcel-detail-row">
       <div className="parcel-detail-label">{label}</div>
       <div className="parcel-detail-value">{children}</div>
+    </div>
+  )
+}
+
+function EnvHazardsSection({ parcel, filters }) {
+  const sites = Array.isArray(parcel?.env_sites) ? parcel.env_sites : []
+  const env = parcel?.env
+
+  if (!sites.length && !env) {
+    return (
+      <div className="parcel-detail-section">
+        <b>Environmental hazards</b>
+        <p className="parcel-detail-muted">
+          No EnviroStor cleanup sites within 500 m of this parcel.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="parcel-detail-section">
+      <b>Environmental hazards</b>
+      <p className="parcel-detail-hint">
+        Edge distance to nearby EnviroStor cleanup sites (up to 500 m).
+      </p>
+      {sites.length > 0 ? (
+        <ul className="parcel-env-list">
+          {sites.map((site, index) => {
+            const tierMeta =
+              CLEANUP_STATUS_TIERS[site.tier] ?? CLEANUP_STATUS_TIERS.unknown
+            const active = siteHitsThreshold(site, filters)
+            const profileUrl = envirostorProfileUrl(site.envirostor_id)
+            const key = `${site.envirostor_id ?? site.name ?? 'site'}-${site.meters}-${index}`
+            return (
+              <li
+                key={key}
+                className={`parcel-env-item${active ? ' parcel-env-item-active' : ''}`}
+              >
+                <div className="parcel-env-item-top">
+                  <span
+                    className="parcel-list-chip parcel-list-chip-outline parcel-env-tier"
+                    style={{ borderColor: tierMeta.color, color: tierMeta.color }}
+                    title={tierMeta.hint}
+                  >
+                    {tierMeta.label}
+                  </span>
+                  <span className="parcel-env-meters">{formatEnvMeters(site.meters)}</span>
+                  {active && <span className="parcel-env-active-tag">In filter range</span>}
+                </div>
+                <div className="parcel-env-name">{site.name || 'Cleanup site'}</div>
+                {site.status && (
+                  <div className="parcel-env-meta">Status: {site.status}</div>
+                )}
+                {(site.address || site.city) && (
+                  <div className="parcel-env-meta">
+                    {[site.address, site.city].filter(Boolean).join(', ')}
+                  </div>
+                )}
+                {profileUrl && (
+                  <a
+                    className="parcel-env-link"
+                    href={profileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    EnviroStor profile →
+                  </a>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <p className="parcel-detail-muted">Nearby distances on file, but no site details.</p>
+      )}
     </div>
   )
 }
@@ -40,6 +142,7 @@ function ParcelDetail({
   listItem,
   categoryLabels,
   categoryColors,
+  filters,
   onBack,
 }) {
   const category = parcel?.land_use?.category ?? listItem?.category ?? 'unmatched'
@@ -164,6 +267,8 @@ function ParcelDetail({
             <p className="parcel-detail-muted">No general-plan land-use match.</p>
           )}
         </div>
+
+        <EnvHazardsSection parcel={parcel} filters={filters} />
       </div>
     </>
   )
@@ -176,6 +281,7 @@ export default function ParcelListPanel({
   parcelIndex,
   selectedApn,
   onParcelSelect,
+  filters,
 }) {
   const selectedParcel = selectedApn ? parcelIndex?.parcels?.[selectedApn] : null
   const selectedListItem = selectedApn
@@ -275,6 +381,7 @@ export default function ParcelListPanel({
               listItem={selectedListItem}
               categoryLabels={categoryLabels}
               categoryColors={categoryColors}
+              filters={filters}
               onBack={() => onParcelSelect?.(null)}
             />
           )}

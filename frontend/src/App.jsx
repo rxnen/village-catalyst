@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import ParcelListPanel from './ParcelListPanel.jsx'
 import { ParcelClusterLayer, PARCEL_DETAIL_MIN_ZOOM } from './ParcelClusterLayer.jsx'
 import { ParcelMapFocus } from './ParcelMapFocus.jsx'
@@ -9,9 +9,18 @@ import FilterPanel, {
   formatTracks,
   parcelsWhere,
   passesFilters,
-  useFilterCounts,
+  countMatching,
 } from './FilterPanel.jsx'
 import { attachExcludedCodes, defaultIncludeClusters } from './useCodeClusters.js'
+import {
+  CLEANUP_STATUS_TIERS,
+  HAZARD_LAYERS,
+  hazardOnEachFeature,
+  hazardPointToLayer,
+  useEnviroStorCleanupSites,
+  useEnviroStorLayer,
+} from './envirostor.js'
+import { DEFAULT_ENV_THRESHOLDS } from './envirostorProximity.js'
 import { HIERARCHY_TIERS, parcelScore } from './parcelScore.js'
 import { isSatelliteZoom, styleParcelFeature } from './parcelStyle.js'
 import { attachParcelPopupSelect, parcelDetailLink } from './parcelPopup.js'
@@ -200,6 +209,22 @@ function ZoomBasemap() {
   return <TileLayer key={satellite ? 'satellite' : 'carto'} url={basemap.url} attribution={basemap.attribution} />
 }
 
+function HazardOverlay({ layer, data: sharedData }) {
+  const fetched = useEnviroStorLayer(sharedData ? null : layer.id)
+  const data = sharedData ?? fetched
+  return (
+    <LayersControl.Overlay name={layer.name}>
+      {data ? (
+        <GeoJSON
+          data={data}
+          pointToLayer={hazardPointToLayer(layer)}
+          onEachFeature={hazardOnEachFeature(layer)}
+        />
+      ) : null}
+    </LayersControl.Overlay>
+  )
+}
+
 function Legend() {
   return (
     <div className="legend legend-compact" title="Parcel outline colors by vacancy score">
@@ -213,30 +238,62 @@ function Legend() {
   )
 }
 
+function HazardLegend() {
+  const cleanupTiers = ['strong', 'medium', 'note'].map((id) => CLEANUP_STATUS_TIERS[id])
+  const otherLayers = HAZARD_LAYERS.filter((layer) => layer.schema !== 'cleanup')
+
+  return (
+    <div className="legend hazard-legend" title="EnviroStor environmental hazard sites">
+      <div className="hazard-legend-title">Environmental hazards</div>
+      <div className="hazard-legend-subtitle">Cleanup sites (by status)</div>
+      {cleanupTiers.map((tier) => (
+        <div key={tier.id} className="legend-row" title={tier.hint}>
+          <span className="swatch swatch-dot" style={{ background: tier.color }} />
+          {tier.label}
+        </div>
+      ))}
+      {otherLayers.map((layer) => (
+        <div key={layer.key} className="legend-row">
+          <span className="swatch swatch-dot" style={{ background: layer.color }} />
+          {layer.name}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function App() {
   const landUse = useJson('/alameda/land_use.geojson')
   const parcelIndex = useJson('/alameda/parcel_index.json')
+  const cleanupGeoJSON = useEnviroStorCleanupSites()
   const [filters, setFilters] = useState(null)
 
   useEffect(() => {
     if (!parcelIndex?.defaults) return
+    const d = parcelIndex.defaults
     setFilters(
       attachExcludedCodes({
-        cities: [...parcelIndex.defaults.cities],
-        minAcres: parcelIndex.defaults.minAcres,
-        maxAcres: parcelIndex.defaults.maxAcres,
-        maxCoverageRatio: parcelIndex.defaults.maxCoverageRatio ?? 0.2,
-        onlyLeads: parcelIndex.defaults.onlyLeads,
-        requireBothTracks: parcelIndex.defaults.requireBothTracks,
+        cities: [...d.cities],
+        minAcres: d.minAcres,
+        maxAcres: d.maxAcres,
+        maxCoverageRatio: d.maxCoverageRatio ?? 0.2,
+        onlyLeads: d.onlyLeads,
+        requireBothTracks: d.requireBothTracks,
         includeClusters: {
           ...defaultIncludeClusters(),
-          ...parcelIndex.defaults.includeClusters,
+          ...d.includeClusters,
         },
+        envStrongMeters: d.envStrongMeters ?? DEFAULT_ENV_THRESHOLDS.envStrongMeters,
+        envMediumMeters: d.envMediumMeters ?? DEFAULT_ENV_THRESHOLDS.envMediumMeters,
+        envNoteMeters: d.envNoteMeters ?? DEFAULT_ENV_THRESHOLDS.envNoteMeters,
       }),
     )
   }, [parcelIndex])
 
-  const counts = useFilterCounts(parcelIndex?.parcels, filters)
+  const counts = useMemo(
+    () => countMatching(parcelIndex?.parcels, filters),
+    [parcelIndex, filters],
+  )
   const [listState, setListState] = useState({
     items: [],
     loading: false,
@@ -245,9 +302,10 @@ export default function App() {
   })
   const onListStateChange = useCallback((next) => setListState(next), [])
   const [selectedApn, setSelectedApn] = useState(null)
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
 
   return (
-    <div className="app">
+    <div className={`app${filtersExpanded ? ' app-filters-expanded' : ''}`}>
       <MapContainer center={MAP_CENTER} zoom={11} className="map">
         <ZoomBasemap />
         {parcelIndex && filters && (
@@ -266,8 +324,8 @@ export default function App() {
             <ParcelMapFocus apn={selectedApn} />
           </>
         )}
-        {landUse && parcelIndex && (
-          <LayersControl position="bottomright">
+        <LayersControl position="bottomright">
+          {landUse && parcelIndex && (
             <LayersControl.Overlay name="General Plan land use">
               <GeoJSON
                 data={landUse}
@@ -275,14 +333,23 @@ export default function App() {
                 onEachFeature={onEachLandUse}
               />
             </LayersControl.Overlay>
-          </LayersControl>
-        )}
+          )}
+          {HAZARD_LAYERS.map((layer) => (
+            <HazardOverlay
+              key={layer.key}
+              layer={layer}
+              data={layer.id === 0 ? cleanupGeoJSON : undefined}
+            />
+          ))}
+        </LayersControl>
       </MapContainer>
       <FilterPanel
         filters={filters}
         onChange={setFilters}
         counts={counts}
         availableCities={parcelIndex?.defaults?.cities ?? []}
+        expanded={filtersExpanded}
+        onExpandedChange={setFiltersExpanded}
       />
       <ParcelListPanel
         categoryLabels={CATEGORY_LABELS}
@@ -291,8 +358,14 @@ export default function App() {
         parcelIndex={parcelIndex}
         selectedApn={selectedApn}
         onParcelSelect={setSelectedApn}
+        filters={filters}
       />
-      <Legend />
+      {!filtersExpanded && (
+        <>
+          <Legend />
+          <HazardLegend />
+        </>
+      )}
     </div>
   )
 }
