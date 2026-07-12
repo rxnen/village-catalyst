@@ -29,6 +29,21 @@ export function passesFilters(parcel, filters) {
   if (parcel.area_acres < filters.minAcres || parcel.area_acres > filters.maxAcres) {
     return false
   }
+  if (
+    filters.maxAspectRatio != null &&
+    parcel.aspect_ratio != null &&
+    parcel.aspect_ratio > filters.maxAspectRatio
+  ) {
+    return false
+  }
+  if (
+    filters.minUsableWidthM != null &&
+    filters.minUsableWidthM > 0 &&
+    parcel.max_width_m != null &&
+    parcel.max_width_m < filters.minUsableWidthM
+  ) {
+    return false
+  }
   if (filters.onlyLeads && !isLead(parcel)) return false
   if (filters.requireBothTracks && !passesBothTracks(parcel)) return false
   if (
@@ -163,6 +178,28 @@ function IconHazard() {
   )
 }
 
+function IconAspect() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 7h16v10H4V7zm2 2v6h12V9H6zm1 1h4v4H7v-4z"
+      />
+    </svg>
+  )
+}
+
+function IconWidth() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 11h2v2H4v-2zm4 0h8v2H8v-2zm10 0h2v2h-2v-2zM7 7l-3 5 3 5v-3h10v3l3-5-3-5v3H7V7z"
+      />
+    </svg>
+  )
+}
+
 const FILTER_SECTIONS = [
   {
     id: 'location',
@@ -175,6 +212,18 @@ const FILTER_SECTIONS = [
     label: 'Parcel size',
     overviewLabel: 'Size',
     icon: IconRuler,
+  },
+  {
+    id: 'aspect',
+    label: 'Aspect ratio',
+    overviewLabel: 'Aspect',
+    icon: IconAspect,
+  },
+  {
+    id: 'width',
+    label: 'Min width',
+    overviewLabel: 'Width',
+    icon: IconWidth,
   },
   {
     id: 'landUse',
@@ -212,6 +261,18 @@ function overviewValue(sectionId, filters) {
 
   if (sectionId === 'size') {
     return `${formatAcres(filters.minAcres)}–${formatAcres(filters.maxAcres)} ac`
+  }
+
+  if (sectionId === 'aspect') {
+    const max = filters.maxAspectRatio
+    if (max == null) return 'Off'
+    return `≤ ${formatAcres(max)}:1`
+  }
+
+  if (sectionId === 'width') {
+    const w = filters.minUsableWidthM
+    if (w == null || w <= 0) return 'Off'
+    return `≥ ${formatAcres(w)} m`
   }
 
   if (sectionId === 'landUse') {
@@ -297,6 +358,82 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
               />
             </label>
           </div>
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'aspect') {
+    return (
+      <>
+        <h2 className="filters-detail-title">Aspect ratio</h2>
+        <p className="filters-detail-desc">
+          Hide parcels whose minimum-rotated bounding rectangle is longer than
+          this length÷width ratio. Village sites are often about 1:1 to 3:1;
+          alleyways and rail strips run 10:1 and higher. Measured from the
+          rotated envelope so diagonal parcels are not misread as square.
+        </p>
+        <div className="filters-detail-controls">
+          <div className="filter-range">
+            <label>
+              Max ratio (length÷width)
+              <input
+                type="number"
+                min="1"
+                step="0.5"
+                value={filters.maxAspectRatio}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  set({
+                    maxAspectRatio: Number.isFinite(n) && n >= 1 ? n : 1,
+                  })
+                }}
+              />
+            </label>
+          </div>
+          <p className="filter-hint filter-hint-block">
+            Default 6:1 filters out obvious slivers while keeping compact and
+            moderately elongated lots. Raise the limit to include longer parcels;
+            lower it toward 3 for stricter village-shaped sites.
+          </p>
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'width') {
+    return (
+      <>
+        <h2 className="filters-detail-title">Min width</h2>
+        <p className="filters-detail-desc">
+          Hide parcels that are nowhere at least this wide. Each parcel is
+          eroded inward by half this distance; if nothing survives, the lot was
+          never wide enough (including bent alleys that still pass the aspect
+          ratio box test). Set to 0 to turn off.
+        </p>
+        <div className="filters-detail-controls">
+          <div className="filter-range">
+            <label>
+              Min usable width (m)
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={filters.minUsableWidthM}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  set({
+                    minUsableWidthM: Number.isFinite(n) && n >= 0 ? n : 0,
+                  })
+                }}
+              />
+            </label>
+          </div>
+          <p className="filter-hint filter-hint-block">
+            Default 20 m catches corridor and dog-leg parcels that look
+            acceptable by bounding-box aspect alone. Raise for stricter sites;
+            lower or set 0 to keep narrower lots.
+          </p>
         </div>
       </>
     )

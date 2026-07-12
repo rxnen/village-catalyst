@@ -14,6 +14,13 @@ const USE_CODE_POINTS = {
   5: -5,
 }
 
+/** Zoning.xlsx A/B/C feasibility points for parcelScore. */
+export const ZONING_TIER_POINTS = {
+  A: 15,
+  B: 8,
+  C: -5,
+}
+
 export const HIERARCHY_TIERS = [
   {
     id: 'prime',
@@ -21,7 +28,7 @@ export const HIERARCHY_TIERS = [
     minScore: 60,
     color: '#1b5e20',
     weight: 3,
-    hint: 'Both lead tracks, top-tier use code, and low footprint coverage',
+    hint: 'Both lead tracks, top-tier use code, low footprint coverage, and Tier A zoning',
   },
   {
     id: 'strong',
@@ -98,11 +105,18 @@ function impsLandPoints(parcel) {
   return 0
 }
 
+export function zoningTierPoints(parcel) {
+  const tier = parcel?.zoning?.tier
+  if (tier == null) return 0
+  return ZONING_TIER_POINTS[tier] ?? 0
+}
+
 function synergyBonus(parcel, maxCoverageRatio) {
   if (
     passesBothTracks(parcel) &&
     effectiveUseCodeRank(parcel) <= TOP_USE_CODE_MAX_RANK &&
-    passesLowCoverage(parcel, maxCoverageRatio)
+    passesLowCoverage(parcel, maxCoverageRatio) &&
+    parcel?.zoning?.tier === 'A'
   ) {
     return 5
   }
@@ -115,6 +129,7 @@ export function parcelScore(parcel, maxCoverageRatio) {
     useCode: useCodePoints(parcel),
     coverage: coveragePoints(parcel, maxCoverageRatio),
     impsLand: impsLandPoints(parcel),
+    zoning: zoningTierPoints(parcel),
     synergy: synergyBonus(parcel, maxCoverageRatio),
   }
   const raw =
@@ -122,6 +137,7 @@ export function parcelScore(parcel, maxCoverageRatio) {
     breakdown.useCode +
     breakdown.coverage +
     breakdown.impsLand +
+    breakdown.zoning +
     breakdown.synergy
   return {
     total: Math.max(0, raw),

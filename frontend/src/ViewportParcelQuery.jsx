@@ -33,6 +33,8 @@ function buildListItems(parcels, filters, bounds) {
       useCodeRank: effectiveUseCodeRank(parcel),
       coverageRatio: parcel.coverage_ratio,
       areaAcres: parcel.area_acres,
+      zoningTier: parcel.zoning?.tier ?? null,
+      zoningLabel: parcel.zoning?.matched_zone ?? parcel.zoning?.base_zone ?? null,
     })
   }
 

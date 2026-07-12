@@ -11,6 +11,14 @@ MIN_ACRES = 1.0
 MAX_ACRES = 2.5
 SQ_M_PER_ACRE = 4046.8564224
 
+# Max length÷width of the minimum-rotated bounding rectangle.
+# Village sites are typically ~1:1–3:1; alley/rail slivers are often 10:1+.
+DEFAULT_MAX_ASPECT_RATIO = 6.0
+
+# Minimum usable width (meters). Parcels that vanish under an inward
+# buffer of half this width are nowhere wide enough (bent alleys, etc.).
+DEFAULT_MIN_USABLE_WIDTH_M = 20.0
+
 # Track B: vacant taxable land
 TRACK_B_MIN_LAND = 50_000
 TRACK_B_MAX_IMPS_LAND_RATIO = 0.2

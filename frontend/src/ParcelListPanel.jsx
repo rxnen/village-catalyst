@@ -7,6 +7,11 @@ import {
 import { QUERY_LIMIT } from './ViewportParcelQuery.jsx'
 import { CLEANUP_STATUS_TIERS } from './envirostor.js'
 import { useCodeTierColor, useCodeTierLabel, effectiveUseCodeRank } from './useCodeRank.js'
+import {
+  ZONING_TIER_COLORS,
+  ZONING_TIER_LABELS,
+} from './zoningTiers.js'
+import { ZONING_TIER_POINTS } from './parcelScore.js'
 
 function trackColor(tracks) {
   if (tracks === 'Track A + Track B') return BOTH_TRACKS_COLOR
@@ -175,6 +180,16 @@ function ParcelDetail({
               ? `${listItem.areaAcres.toFixed(2)} acres`
               : '—'}
         </DetailRow>
+        {parcel?.aspect_ratio != null && (
+          <DetailRow label="Aspect ratio">
+            {parcel.aspect_ratio.toFixed(1)}:1
+          </DetailRow>
+        )}
+        {parcel?.max_width_m != null && (
+          <DetailRow label="Max width">
+            {parcel.max_width_m.toFixed(0)} m
+          </DetailRow>
+        )}
 
         <div className="parcel-detail-section">
           <b>Lead tracks</b>
@@ -234,6 +249,43 @@ function ParcelDetail({
             </>
           ) : (
             <p className="parcel-detail-muted">No use code on file.</p>
+          )}
+        </div>
+
+        <div className="parcel-detail-section">
+          <b>Zoning</b>
+          {parcel?.zoning?.tier ? (
+            <>
+              <span
+                className="parcel-list-chip parcel-detail-chip"
+                style={{
+                  background:
+                    ZONING_TIER_COLORS[parcel.zoning.tier]?.fillColor ?? '#9e9e9e',
+                  color: '#111',
+                }}
+              >
+                Tier {parcel.zoning.tier}
+                {ZONING_TIER_POINTS[parcel.zoning.tier] != null
+                  ? ` (${ZONING_TIER_POINTS[parcel.zoning.tier] > 0 ? '+' : ''}${ZONING_TIER_POINTS[parcel.zoning.tier]})`
+                  : ''}
+              </span>
+              <p className="parcel-detail-landuse-name">
+                {parcel.zoning.matched_zone || parcel.zoning.base_zone || '—'}
+              </p>
+              <p className="parcel-detail-muted">
+                {ZONING_TIER_LABELS[parcel.zoning.tier] ?? `Tier ${parcel.zoning.tier}`}
+              </p>
+              {parcel.zoning.overlay && (
+                <p className="parcel-detail-muted">Overlay: {parcel.zoning.overlay}</p>
+              )}
+              {parcel.zoning.overlap_frac != null && (
+                <p className="parcel-detail-muted">
+                  {Math.round(parcel.zoning.overlap_frac * 100)}% parcel overlap with this zone
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="parcel-detail-muted">No zoning match on file.</p>
           )}
         </div>
 
@@ -354,6 +406,20 @@ export default function ParcelListPanel({
                         {' · '}
                         Use {item.useCode}
                         {item.useCodeLabel ? `: ${item.useCodeLabel}` : ''}
+                      </span>
+                    )}
+                    {item.zoningTier && (
+                      <span
+                        className="parcel-list-chip"
+                        title={item.zoningLabel || `Tier ${item.zoningTier}`}
+                        style={{
+                          background:
+                            ZONING_TIER_COLORS[item.zoningTier]?.fillColor ?? '#9e9e9e',
+                          color: '#111',
+                        }}
+                      >
+                        Zone {item.zoningTier}
+                        {item.zoningLabel ? ` · ${item.zoningLabel}` : ''}
                       </span>
                     )}
                     {item.tracks && (

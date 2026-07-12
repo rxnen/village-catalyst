@@ -391,6 +391,17 @@ body,
   font: 11px/1.5 system-ui, sans-serif;
 }
 
+.hazard-legend-above-zoning {
+  bottom: 155px;
+}
+
+.zoning-tier-legend {
+  bottom: 52px;
+  left: calc(var(--filters-sidebar-width) + 12px);
+  padding: 8px 10px;
+  font: 11px/1.5 system-ui, sans-serif;
+}
+
 .hazard-legend-title {
   font-weight: 600;
   color: #37474f;

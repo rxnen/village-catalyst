@@ -132,16 +132,18 @@ export function useCodeTierColor(rank) {
 
 /**
  * Lower value sorts higher in the parcel list.
- * Band 0: low coverage + top-tier use code + both lead tracks.
+ * Band 0: both tracks + top use code + low coverage + Tier A zoning.
  */
 export function parcelListRank(item, maxCoverageRatio) {
   const lowCoverage =
     item.coverageRatio != null && item.coverageRatio < maxCoverageRatio
   const topUseCode = item.useCodeRank <= TOP_USE_CODE_MAX_RANK
   const bothTracks = item.leadRank === 0
+  const tierA = item.zoningTier === 'A'
 
   let band = 5
-  if (bothTracks && topUseCode && lowCoverage) band = 0
+  if (bothTracks && topUseCode && lowCoverage && tierA) band = 0
+  else if (bothTracks && topUseCode && lowCoverage) band = 1
   else if (bothTracks && topUseCode) band = 1
   else if (bothTracks && lowCoverage) band = 2
   else if (topUseCode && lowCoverage) band = 2

@@ -24,6 +24,11 @@ import { DEFAULT_ENV_THRESHOLDS } from './envirostorProximity.js'
 import { HIERARCHY_TIERS, parcelScore } from './parcelScore.js'
 import { isSatelliteZoom, styleParcelFeature } from './parcelStyle.js'
 import { attachParcelPopupSelect, parcelDetailLink } from './parcelPopup.js'
+import { ZoningLayer, ZONING_OVERLAY_NAME } from './ZoningLayer.jsx'
+import {
+  ZONING_TIER_COLORS,
+  ZONING_TIER_LABELS,
+} from './zoningTiers.js'
 
 const MAP_CENTER = [37.74, -122.05]
 
@@ -155,6 +160,12 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
           parcel,
           filters.maxCoverageRatio,
         )
+        const zoning = parcel.zoning
+        const zoningPts = breakdown.zoning
+        const zoningSign = zoningPts > 0 ? `+${zoningPts}` : String(zoningPts)
+        const zoningBlock = zoning?.tier
+          ? `<br/>Zoning: <b>${zoning.matched_zone || zoning.base_zone || '—'}</b> · Tier ${zoning.tier} (${zoningSign})`
+          : '<br/>Zoning: <i>unmatched</i>'
         const scoreBlock =
           `<br/><b>Vacancy score: ${scoreTotal}</b>` +
           (breakdown.synergy
@@ -167,6 +178,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
             `<br/>${parcel.area_acres.toFixed(2)} acres` +
             ratioBlock +
             coverageBlock +
+            zoningBlock +
             scoreBlock +
             trackBlock +
             landUseBlock +
@@ -225,6 +237,30 @@ function HazardOverlay({ layer, data: sharedData }) {
   )
 }
 
+const HAZARD_LAYER_NAMES = new Set(HAZARD_LAYERS.map((layer) => layer.name))
+
+/** Syncs LayersControl overlay toggles into React state (hazards + zoning). */
+function OverlayVisibilityTracker({ onHazardChange, onZoningChange }) {
+  const map = useMap()
+  useEffect(() => {
+    const onAdd = (event) => {
+      if (HAZARD_LAYER_NAMES.has(event.name)) onHazardChange(event.name, true)
+      if (event.name === ZONING_OVERLAY_NAME) onZoningChange(true)
+    }
+    const onRemove = (event) => {
+      if (HAZARD_LAYER_NAMES.has(event.name)) onHazardChange(event.name, false)
+      if (event.name === ZONING_OVERLAY_NAME) onZoningChange(false)
+    }
+    map.on('overlayadd', onAdd)
+    map.on('overlayremove', onRemove)
+    return () => {
+      map.off('overlayadd', onAdd)
+      map.off('overlayremove', onRemove)
+    }
+  }, [map, onHazardChange, onZoningChange])
+  return null
+}
+
 function Legend() {
   return (
     <div className="legend legend-compact" title="Parcel outline colors by vacancy score">
@@ -238,12 +274,32 @@ function Legend() {
   )
 }
 
-function HazardLegend() {
+function ZoningTierLegend() {
+  return (
+    <div className="legend zoning-tier-legend" title="Zoning tiers from Zoning.xlsx">
+      <div className="hazard-legend-title">Zoning tiers</div>
+      {['A', 'B', 'C'].map((tier) => (
+        <div key={tier} className="legend-row">
+          <span
+            className="swatch"
+            style={{ background: ZONING_TIER_COLORS[tier].fillColor }}
+          />
+          {ZONING_TIER_LABELS[tier]}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function HazardLegend({ stackedAboveZoning = false }) {
   const cleanupTiers = ['strong', 'medium', 'note'].map((id) => CLEANUP_STATUS_TIERS[id])
   const otherLayers = HAZARD_LAYERS.filter((layer) => layer.schema !== 'cleanup')
 
   return (
-    <div className="legend hazard-legend" title="EnviroStor environmental hazard sites">
+    <div
+      className={`legend hazard-legend${stackedAboveZoning ? ' hazard-legend-above-zoning' : ''}`}
+      title="EnviroStor environmental hazard sites"
+    >
       <div className="hazard-legend-title">Environmental hazards</div>
       <div className="hazard-legend-subtitle">Cleanup sites (by status)</div>
       {cleanupTiers.map((tier) => (
@@ -276,6 +332,8 @@ export default function App() {
         cities: [...d.cities],
         minAcres: d.minAcres,
         maxAcres: d.maxAcres,
+        maxAspectRatio: d.maxAspectRatio ?? 6,
+        minUsableWidthM: d.minUsableWidthM ?? 20,
         maxCoverageRatio: d.maxCoverageRatio ?? 0.2,
         onlyLeads: d.onlyLeads,
         requireBothTracks: d.requireBothTracks,
@@ -303,6 +361,19 @@ export default function App() {
   const onListStateChange = useCallback((next) => setListState(next), [])
   const [selectedApn, setSelectedApn] = useState(null)
   const [filtersExpanded, setFiltersExpanded] = useState(false)
+  const [hazardLayerOn, setHazardLayerOn] = useState(() =>
+    Object.fromEntries(HAZARD_LAYERS.map((layer) => [layer.name, false])),
+  )
+  const [zoningVisible, setZoningVisible] = useState(false)
+  const onHazardVisibility = useCallback((name, visible) => {
+    setHazardLayerOn((prev) =>
+      prev[name] === visible ? prev : { ...prev, [name]: visible },
+    )
+  }, [])
+  const onZoningVisibility = useCallback((visible) => {
+    setZoningVisible(visible)
+  }, [])
+  const anyHazardVisible = Object.values(hazardLayerOn).some(Boolean)
 
   return (
     <div className={`app${filtersExpanded ? ' app-filters-expanded' : ''}`}>
@@ -321,10 +392,15 @@ export default function App() {
               filters={filters}
               onUpdate={onListStateChange}
             />
-            <ParcelMapFocus apn={selectedApn} />
+            <ParcelMapFocus
+              apn={selectedApn}
+              lat={parcelIndex.parcels?.[selectedApn]?.lat}
+              lng={parcelIndex.parcels?.[selectedApn]?.lng}
+            />
           </>
         )}
         <LayersControl position="bottomright">
+          <ZoningLayer />
           {landUse && parcelIndex && (
             <LayersControl.Overlay name="General Plan land use">
               <GeoJSON
@@ -342,6 +418,10 @@ export default function App() {
             />
           ))}
         </LayersControl>
+        <OverlayVisibilityTracker
+          onHazardChange={onHazardVisibility}
+          onZoningChange={onZoningVisibility}
+        />
       </MapContainer>
       <FilterPanel
         filters={filters}
@@ -363,7 +443,10 @@ export default function App() {
       {!filtersExpanded && (
         <>
           <Legend />
-          <HazardLegend />
+          {zoningVisible && <ZoningTierLegend />}
+          {anyHazardVisible && (
+            <HazardLegend stackedAboveZoning={zoningVisible} />
+          )}
         </>
       )}
     </div>

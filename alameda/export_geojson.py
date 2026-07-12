@@ -9,13 +9,21 @@ Writes to frontend/public/alameda/:
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 
-from config import MAX_ACRES, MIN_ACRES, SQ_M_PER_ACRE, TARGET_CITIES
+from config import (
+    DEFAULT_MAX_ASPECT_RATIO,
+    DEFAULT_MIN_USABLE_WIDTH_M,
+    MAX_ACRES,
+    MIN_ACRES,
+    SQ_M_PER_ACRE,
+    TARGET_CITIES,
+)
 from metrics import evaluate_lead_tracks, normalize_use_code
 
 ALAMEDA_DIR = Path(__file__).resolve().parent
@@ -23,6 +31,7 @@ PROCESSED = ALAMEDA_DIR / "processed"
 PARCELS_GEOM = PROCESSED / "parcels.geojson"
 LAND_USE_CACHE = PROCESSED / "land_use.geojson"
 CROSSWALK = PROCESSED / "parcel_landuse_crosswalk.csv"
+ZONING_CROSSWALK = PROCESSED / "parcel_zoning_crosswalk.csv"
 BUILDING_COVERAGE = PROCESSED / "parcel_building_coverage.csv"
 FILTERED_PARCELS = ALAMEDA_DIR / "filtered" / "Parcels_Target_Cities.csv"
 USE_CODES = ALAMEDA_DIR / "raw" / "UseCodes.csv"
@@ -31,6 +40,82 @@ OUT_DIR = ALAMEDA_DIR.parent / "frontend" / "public" / "alameda"
 AREA_CRS = "EPSG:26910"
 SIMPLIFY_M = 5.0
 DEFAULT_MAX_COVERAGE_RATIO = 0.2
+_MIN_SIDE_M = 1e-6
+
+
+def mrr_aspect_ratio(geom) -> float | None:
+    """Length ÷ width of the geometry's minimum-rotated bounding rectangle.
+
+    Always ≥ 1 when defined. Uses the rotated envelope (not axis-aligned
+    bounds) so diagonal slivers keep a truthful elongation ratio.
+    """
+    if geom is None or geom.is_empty:
+        return None
+    try:
+        mrr = geom.minimum_rotated_rectangle
+    except Exception:
+        return None
+    if mrr is None or mrr.is_empty:
+        return None
+    # Point / very thin line degenerates have no usable rectangle sides.
+    if mrr.geom_type == "Point":
+        return None
+    if mrr.geom_type == "LineString":
+        return None
+    try:
+        coords = list(mrr.exterior.coords)
+    except Exception:
+        return None
+    if len(coords) < 3:
+        return None
+    # Rectangle exterior is 5 coords (closed); adjacent sides are length & width.
+    dx = coords[1][0] - coords[0][0]
+    dy = coords[1][1] - coords[0][1]
+    side_a = math.hypot(dx, dy)
+    dx = coords[2][0] - coords[1][0]
+    dy = coords[2][1] - coords[1][1]
+    side_b = math.hypot(dx, dy)
+    short = min(side_a, side_b)
+    long = max(side_a, side_b)
+    if short < _MIN_SIDE_M:
+        return None
+    return long / short
+
+
+def max_erosion_width_m(geom, tol: float = 0.5) -> float | None:
+    """Largest width W (meters) such that geom.buffer(-W/2) is non-empty.
+
+    Inward erosion by W/2 leaves a remnant iff the parcel is at least W
+    meters across somewhere. Bent alleyways can pass an MRR aspect test
+    yet still fail this check. Result is twice the max interior clearance.
+    """
+    if geom is None or geom.is_empty:
+        return None
+    g = geom
+    if not g.is_valid:
+        g = g.buffer(0)
+    if g is None or g.is_empty:
+        return None
+
+    minx, miny, maxx, maxy = g.bounds
+    hi = min(maxx - minx, maxy - miny) / 2.0
+    if hi <= 0:
+        return 0.0
+
+    # Numerical: buffer(-hi) on a rectangle of short side 2*hi is empty.
+    lo = 0.0
+    if not g.buffer(-_MIN_SIDE_M).is_empty:
+        # Find largest half-width clearance that still leaves a remnant.
+        while hi - lo > tol:
+            mid = (lo + hi) / 2.0
+            if g.buffer(-mid).is_empty:
+                hi = mid
+            else:
+                lo = mid
+        return 2.0 * lo
+
+    # Degenerate / sub-tolerance sliver.
+    return 0.0
 
 
 def load_use_code_lookup() -> dict[str, str]:
@@ -73,11 +158,22 @@ def build_parcel_index() -> dict:
     geom = gpd.read_file(PARCELS_GEOM)
     geom = geom[geom["APN"].isin(attrs["APN"])].to_crs(AREA_CRS)
     geom["area_acres"] = geom.geometry.area / SQ_M_PER_ACRE
+    geom["aspect_ratio"] = geom.geometry.map(mrr_aspect_ratio)
+    geom["max_width_m"] = geom.geometry.map(max_erosion_width_m)
     centroids = geom.geometry.centroid.to_crs("EPSG:4326")
     geom["centroid_lat"] = centroids.y
     geom["centroid_lng"] = centroids.x
     merged = attrs.merge(
-        geom[["APN", "area_acres", "centroid_lat", "centroid_lng"]],
+        geom[
+            [
+                "APN",
+                "area_acres",
+                "aspect_ratio",
+                "max_width_m",
+                "centroid_lat",
+                "centroid_lng",
+            ]
+        ],
         on="APN",
         how="left",
     )
@@ -100,6 +196,42 @@ def build_parcel_index() -> dict:
                 "category": gplu_category(row.GPLU),
                 "overlap_frac": float(row.overlap_frac),
             }
+    else:
+        print("warning: parcel_landuse_crosswalk.csv not found")
+
+    zoning_by_apn: dict[str, dict] = {}
+    if ZONING_CROSSWALK.exists():
+        zx = pd.read_csv(ZONING_CROSSWALK, dtype=str)
+        for row in zx.itertuples(index=False):
+            if not row.tier or str(row.tier).strip() in ("", "nan", "None"):
+                continue
+            overlay = row.overlay
+            if overlay is None or str(overlay).strip() in ("", "nan", "None"):
+                overlay = None
+            else:
+                overlay = str(overlay).strip()
+            shelter = str(row.allows_shelter_by_right).strip().lower()
+            th = str(row.allows_transitional_housing).strip().lower()
+            entry_z: dict = {
+                "tier": str(row.tier).strip().upper(),
+                "matched_zone": str(row.matched_zone).strip()
+                if row.matched_zone and str(row.matched_zone) not in ("nan", "None")
+                else None,
+                "base_zone": str(row.base_zone).strip()
+                if row.base_zone and str(row.base_zone) not in ("nan", "None")
+                else None,
+                "overlay": overlay,
+                "overlap_frac": float(row.overlap_frac)
+                if row.overlap_frac not in (None, "", "nan")
+                else None,
+            }
+            if shelter in ("true", "false"):
+                entry_z["allows_shelter_by_right"] = shelter == "true"
+            if th in ("true", "false"):
+                entry_z["allows_transitional_housing"] = th == "true"
+            zoning_by_apn[row.APN] = entry_z
+    else:
+        print("warning: parcel_zoning_crosswalk.csv not found; run join_parcels_to_zoning.py")
 
     coverage_by_apn: dict[str, float] = {}
     if BUILDING_COVERAGE.exists():
@@ -150,6 +282,10 @@ def build_parcel_index() -> dict:
             "track_b": leads["track_b"],
             "tracks": leads["tracks"],
         }
+        if pd.notna(row.aspect_ratio):
+            entry["aspect_ratio"] = round(float(row.aspect_ratio), 2)
+        if pd.notna(row.max_width_m):
+            entry["max_width_m"] = round(float(row.max_width_m), 1)
         situs_address = (row.SitusAddress or "").strip()
         if situs_address:
             entry["address"] = situs_address
@@ -166,6 +302,9 @@ def build_parcel_index() -> dict:
             entry["coverage_ratio"] = coverage_ratio
         lu = land_use_by_apn.get(row.APN)
         entry["land_use"] = lu if lu else {"category": "unmatched"}
+        zoning = zoning_by_apn.get(row.APN)
+        if zoning:
+            entry["zoning"] = zoning
         use_code = normalize_use_code(row.UseCode)
         if use_code:
             entry["use_code"] = use_code
@@ -184,6 +323,8 @@ def build_parcel_index() -> dict:
             "cities": list(TARGET_CITIES),
             "minAcres": MIN_ACRES,
             "maxAcres": MAX_ACRES,
+            "maxAspectRatio": DEFAULT_MAX_ASPECT_RATIO,
+            "minUsableWidthM": DEFAULT_MIN_USABLE_WIDTH_M,
             "maxCoverageRatio": DEFAULT_MAX_COVERAGE_RATIO,
             "onlyLeads": False,
             "requireBothTracks": False,

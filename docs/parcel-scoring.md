@@ -136,7 +136,23 @@ Best overlap per APN wins. Parcels below 50% overlap are labeled `unmatched` in 
 
 ---
 
-### 1.7 Frontend export universe (`export_geojson.py`)
+### 1.7 Zoning tier match (`join_parcels_to_zoning.py`)
+
+Not an elimination filter. Joins every target-city parcel polygon to its city zoning layer, keeps the zone with greatest overlap, then resolves an A/B/C tier from `Zoning.xlsx` (via `zoning_tiers.json`).
+
+**Overlay rule:** if `base/overlay` (or GIS full label) exists as a spreadsheet row, use that tier; otherwise fall back to the base zone row.
+
+**Pipeline order:**
+
+```
+export_zoning_tiers.py → join_parcels_to_zoning.py → export_geojson.py
+```
+
+Output: `processed/parcel_zoning_crosswalk.csv` → baked onto each parcel as `zoning` in `parcel_index.json`.
+
+---
+
+### 1.8 Frontend export universe (`export_geojson.py`)
 
 **Source:** `filtered/Parcels_Target_Cities.csv` (all 4 target cities, **not** pre-filtered to 1–2.5 acres).
 
@@ -151,6 +167,7 @@ Best overlap per APN wins. Parcels below 50% overlap are labeled `unmatched` in 
 - `coverage_ratio` (from building join)
 - `use_code`, `use_code_label`
 - `land_use` (GPLU match or `{category: "unmatched"}`)
+- `zoning` (tier A/B/C match, or omitted when unmatched)
 
 **Export defaults baked into JSON:**
 
@@ -326,6 +343,7 @@ Lower sort value = higher in list. Tie-break: address alphabetical.
 lowCoverage  = coverage_ratio != null AND coverage_ratio < maxCoverageRatio
 topUseCode   = effectiveUseCodeRank ≤ 1
 bothTracks   = track_a AND track_b
+tierA        = zoning.tier === "A"
 leadRank     = 0 if bothTracks
              = 1 if track_a OR track_b (but not both)
              = 2 if neither
@@ -335,8 +353,8 @@ leadRank     = 0 if bothTracks
 
 | Band | Condition |
 |------|-----------|
-| **0** | `bothTracks AND topUseCode AND lowCoverage` |
-| **1** | `bothTracks AND topUseCode` |
+| **0** | `bothTracks AND topUseCode AND lowCoverage AND tierA` |
+| **1** | `(bothTracks AND topUseCode AND lowCoverage)` (no Tier A) **OR** `bothTracks AND topUseCode` |
 | **2** | `(bothTracks AND lowCoverage) OR (topUseCode AND lowCoverage)` |
 | **3** | `bothTracks` only |
 | **4** | `topUseCode OR lowCoverage` (but not band 0–3) |
@@ -348,7 +366,7 @@ leadRank     = 0 if bothTracks
 parcelListRank = band × 1000 + leadRank × 10 + effectiveUseCodeRank
 ```
 
-**Example:** both tracks + tier-1 vacant + low coverage:
+**Example:** both tracks + tier-1 vacant + low coverage + Tier A zoning:
 
 ```
 band=0, leadRank=0, useCodeRank=1 → rank = 1
@@ -397,23 +415,33 @@ Let `r = coverage_ratio`, `T = maxCoverageRatio` (default 0.2):
 | `0.10 ≤ ratio < 0.20` | **1** |
 | `ratio ≥ 0.20` or null | **0** |
 
+**Zoning tier (max 15, min −5)** from `parcel.zoning.tier` (`Zoning.xlsx`):
+
+| Tier | Points | Meaning |
+|------|--------|---------|
+| **A** | **+15** | Shelter by right / SB2 zone |
+| **B** | **+8** | CUP / discretionary or TH-as-residential path |
+| **C** | **−5** | Rezone needed |
+| missing / null | **0** | No zoning match |
+
 **Synergy bonus (+5):**
 
 ```
 +5 if (track_a AND track_b)
    AND (effectiveUseCodeRank ≤ 1)
    AND (coverage_ratio < maxCoverageRatio)
+   AND (zoning.tier === "A")
 ```
 
 ### 6.2 Total score
 
 ```
-raw_score = leadTracks + useCode + coverage + impsLand + synergy
+raw_score = leadTracks + useCode + coverage + impsLand + zoning + synergy
 total_score = max(0, raw_score)
 ```
 
-**Theoretical max:** 30 + 18 + 25 + 5 + 5 = **83**  
-**Theoretical min (before floor):** 0 + (−5) + 0 + 0 + 0 = **−5** → floored to **0**
+**Theoretical max:** 30 + 18 + 25 + 5 + 15 + 5 = **98**  
+**Theoretical min (before floor):** 0 + (−5) + 0 + 0 + (−5) + 0 = **−10** → floored to **0**
 
 ### 6.3 Outline hierarchy tiers
 
@@ -426,6 +454,8 @@ total_score = max(0, raw_score)
 | 5 | 1–14 | Background | `#78909c` | 1.5 |
 | 6 | 0 | No signal | `#bdbdbd` | 1.0 |
 
+Prime vacant implies synergy-eligible stacks (both tracks, top use code, low coverage, **and Tier A zoning**).
+
 ---
 
 ## Part 7: What does NOT filter or score
@@ -433,6 +463,7 @@ total_score = max(0, raw_score)
 | Signal | Role |
 |--------|------|
 | **GPLU / General Plan category** | Popup and optional map overlay only |
+| **Zoning polygons on the map** | Visual A/B/C tint; scoring uses the per-parcel `zoning` field from the crosswalk |
 | **Land / Imps raw dollar values** | Not in frontend; only derived ratios/tracks |
 | **HOEX / OTEX raw values** | Only used to compute Track A |
 | **EconomicUnit** | Only used to compute Track B |
@@ -447,13 +478,14 @@ total_score = max(0, raw_score)
 Raw county parcels (~490k)
   ↓ city filter (4 cities)
   ↓ export: drop junk $0/$0 + junk use code
+  ↓ zoning join → parcel.zoning tier A/B/C
   ↓ parcel_index.json (~203k parcels)
   ↓ frontend city filter
   ↓ frontend acreage filter (1.0–2.5 ac default)
   ↓ frontend use-code cluster filter (+ 300 exception)
   ↓ optional: onlyLeads / requireBothTracks
   = VISIBLE PARCELS
-  ↓ list: parcelListRank (bands + leadRank + useCodeRank)
+  ↓ list: parcelListRank (bands + leadRank + useCodeRank; band 0 needs Tier A)
   ↓ map: parcelScore → outline tier color
 ```
 
@@ -471,5 +503,5 @@ track_b              = Land > 50000 AND imps/land < 0.2 AND no econ unit
 low_coverage         = coverage_ratio < maxCoverageRatio   (default 0.2)
 top_use_code         = effectiveUseCodeRank ≤ 1
 parcelListRank       = band×1000 + leadRank×10 + useCodeRank
-vacancy_score        = max(0, leadPts + usePts + covPts + impsPts + synergy)
+vacancy_score        = max(0, leadPts + usePts + covPts + impsPts + zoningPts + synergy)
 ```

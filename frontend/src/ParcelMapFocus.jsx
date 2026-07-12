@@ -1,49 +1,37 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useMap } from 'react-leaflet'
-import L from 'leaflet'
-import { query } from 'esri-leaflet'
-
-const PARCELS_URL =
-  'https://services5.arcgis.com/ROBnTHSNjoZ2Wm1P/ArcGIS/rest/services/Parcels/FeatureServer/0'
+import { captureMapView } from './mapViewThreshold.js'
 
 const FOCUS_MAX_ZOOM = 17
+const FLY_DURATION = 0.75
 
-function apnWhere(apn) {
-  return `APN='${String(apn).replace(/'/g, "''")}'`
-}
-
-export function ParcelMapFocus({ apn }) {
+export function ParcelMapFocus({ apn, lat, lng }) {
   const map = useMap()
+  const savedViewRef = useRef(null)
+  const prevApnRef = useRef(null)
 
   useEffect(() => {
-    if (!apn) return
+    const prevApn = prevApnRef.current
+    prevApnRef.current = apn
 
-    let cancelled = false
-
-    query({ url: PARCELS_URL })
-      .where(apnWhere(apn))
-      .returnGeometry(true)
-      .limit(1)
-      .run((err, featureCollection) => {
-        if (cancelled || err) return
-
-        const feature = featureCollection.features?.[0]
-        if (!feature) return
-
-        const bounds = L.geoJSON(feature).getBounds()
-        if (!bounds.isValid()) return
-
-        map.flyToBounds(bounds, {
-          padding: [60, 60],
-          maxZoom: FOCUS_MAX_ZOOM,
-          duration: 0.75,
-        })
-      })
-
-    return () => {
-      cancelled = true
+    if (!apn) {
+      const saved = savedViewRef.current
+      savedViewRef.current = null
+      if (saved && prevApn) {
+        map.flyTo(saved.center, saved.zoom, { duration: FLY_DURATION })
+      }
+      return
     }
-  }, [map, apn])
+
+    if (lat == null || lng == null) return
+
+    // Remember the view from before the first focus in this selection session.
+    if (!prevApn) {
+      savedViewRef.current = captureMapView(map)
+    }
+
+    map.flyTo([lat, lng], FOCUS_MAX_ZOOM, { duration: FLY_DURATION })
+  }, [map, apn, lat, lng])
 
   return null
 }
