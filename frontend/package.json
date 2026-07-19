@@ -1,23 +1,3 @@
-{
-  "name": "sf-map",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "esri-leaflet": "^3.0.19",
-    "leaflet": "^1.9.4",
-    "leaflet.markercluster": "^1.5.3",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-leaflet": "^5.0.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^5.0.0",
-    "vite": "^7.0.0"
-  }
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:3111683dd7755972a43959272fadbdc533b1b7fcf8e2582a1fcef7d31b258779
+size 499

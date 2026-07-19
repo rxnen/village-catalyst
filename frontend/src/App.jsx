@@ -10,6 +10,8 @@ import FilterPanel, {
   parcelsWhere,
   passesFilters,
   countMatching,
+  defaultEnabledFilters,
+  effectiveCities,
 } from './FilterPanel.jsx'
 import { attachExcludedCodes, defaultIncludeClusters } from './useCodeClusters.js'
 import {
@@ -25,6 +27,7 @@ import { HIERARCHY_TIERS, parcelScore } from './parcelScore.js'
 import { isSatelliteZoom, styleParcelFeature } from './parcelStyle.js'
 import { attachParcelPopupSelect, parcelDetailLink } from './parcelPopup.js'
 import { ZoningLayer, ZONING_OVERLAY_NAME } from './ZoningLayer.jsx'
+import { FreewayLayer } from './FreewayLayer.jsx'
 import {
   ZONING_TIER_COLORS,
   ZONING_TIER_LABELS,
@@ -118,9 +121,10 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
   useEffect(() => {
     if (!parcels || !filters || !showDetail) return
 
+    const allCities = parcelIndex?.defaults?.cities ?? []
     const layer = featureLayer({
       url: PARCELS_URL,
-      where: parcelsWhere(filters.cities),
+      where: parcelsWhere(effectiveCities(filters, allCities)),
       style: (feature) => {
         const apn = feature?.properties?.APN
         const parcel = parcels[apn]
@@ -344,6 +348,7 @@ export default function App() {
         envStrongMeters: d.envStrongMeters ?? DEFAULT_ENV_THRESHOLDS.envStrongMeters,
         envMediumMeters: d.envMediumMeters ?? DEFAULT_ENV_THRESHOLDS.envMediumMeters,
         envNoteMeters: d.envNoteMeters ?? DEFAULT_ENV_THRESHOLDS.envNoteMeters,
+        enabled: defaultEnabledFilters(),
       }),
     )
   }, [parcelIndex])
@@ -401,6 +406,7 @@ export default function App() {
         )}
         <LayersControl position="bottomright">
           <ZoningLayer />
+          <FreewayLayer />
           {landUse && parcelIndex && (
             <LayersControl.Overlay name="General Plan land use">
               <GeoJSON

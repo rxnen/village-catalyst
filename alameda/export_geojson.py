@@ -369,6 +369,28 @@ def main() -> None:
         }
     )
 
+    print("Annotating freeway buffer overlap…")
+    from annotate_freeway_overlap import (
+        annotate_freeway_overlap,
+        build_freeway_buffer_union,
+        fetch_shn_lines,
+        DEFAULT_BUFFER_METERS,
+    )
+
+    shn = fetch_shn_lines()
+    buffer_union = build_freeway_buffer_union(shn, buffer_meters=DEFAULT_BUFFER_METERS)
+    fw_stats = annotate_freeway_overlap(index["parcels"], geom, buffer_union)
+    print(
+        f"  freeway: {fw_stats['hit_parcels']:,} intersect buffer; "
+        f"{fw_stats['excluded_ge_50']:,} ≥50% overlap"
+    )
+    index.setdefault("defaults", {}).update(
+        {
+            "freewayBufferMeters": DEFAULT_BUFFER_METERS,
+            "freewayOverlapThreshold": 0.5,
+        }
+    )
+
     index_path = OUT_DIR / "parcel_index.json"
     index_path.write_text(json.dumps(index))
     print(f"{index_path.name}: {len(index['parcels']):,} parcels, "

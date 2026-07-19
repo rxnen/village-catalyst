@@ -22,40 +22,82 @@ export function passesBothTracks(parcel) {
   return parcel?.track_a && parcel?.track_b
 }
 
+/** Whether a named filter group is active. Missing keys default to on. */
+export function isFilterEnabled(filters, id) {
+  if (!filters?.enabled || filters.enabled[id] === undefined) return true
+  return Boolean(filters.enabled[id])
+}
+
+/** Cities used for ArcGIS queries / city membership when location is on. */
+export function effectiveCities(filters, allCities = []) {
+  if (!isFilterEnabled(filters, 'location')) return allCities
+  return filters?.cities ?? []
+}
+
+/** Parcels with this much area inside the SHN freeway buffer are excluded. */
+export const FREEWAY_OVERLAP_THRESHOLD = 0.5
+
 export function passesFilters(parcel, filters) {
   if (!parcel) return false
-  if (!filters.cities.includes(parcel.city)) return false
-  if (parcel.area_acres == null) return false
-  if (parcel.area_acres < filters.minAcres || parcel.area_acres > filters.maxAcres) {
-    return false
+
+  if (isFilterEnabled(filters, 'location')) {
+    if (!filters.cities.includes(parcel.city)) return false
   }
-  if (
-    filters.maxAspectRatio != null &&
-    parcel.aspect_ratio != null &&
-    parcel.aspect_ratio > filters.maxAspectRatio
-  ) {
-    return false
+
+  if (isFilterEnabled(filters, 'size')) {
+    if (parcel.area_acres == null) return false
+    if (parcel.area_acres < filters.minAcres || parcel.area_acres > filters.maxAcres) {
+      return false
+    }
   }
-  if (
-    filters.minUsableWidthM != null &&
-    filters.minUsableWidthM > 0 &&
-    parcel.max_width_m != null &&
-    parcel.max_width_m < filters.minUsableWidthM
-  ) {
-    return false
+
+  if (isFilterEnabled(filters, 'aspect')) {
+    if (
+      filters.maxAspectRatio != null &&
+      parcel.aspect_ratio != null &&
+      parcel.aspect_ratio > filters.maxAspectRatio
+    ) {
+      return false
+    }
   }
-  if (filters.onlyLeads && !isLead(parcel)) return false
-  if (filters.requireBothTracks && !passesBothTracks(parcel)) return false
-  if (
-    parcelExcludedByUseCode(
-      parcel,
-      filters._excludedUseCodes,
-      filters.maxCoverageRatio,
-    )
-  ) {
-    return false
+
+  if (isFilterEnabled(filters, 'width')) {
+    if (
+      filters.minUsableWidthM != null &&
+      filters.minUsableWidthM > 0 &&
+      parcel.max_width_m != null &&
+      parcel.max_width_m < filters.minUsableWidthM
+    ) {
+      return false
+    }
   }
-  if (parcelExcludedByEnv(parcel, filters)) return false
+
+  if (isFilterEnabled(filters, 'leads')) {
+    if (filters.onlyLeads && !isLead(parcel)) return false
+    if (filters.requireBothTracks && !passesBothTracks(parcel)) return false
+  }
+
+  if (isFilterEnabled(filters, 'landUse')) {
+    const coverageCap = isFilterEnabled(filters, 'buildings')
+      ? filters.maxCoverageRatio
+      : null
+    if (
+      parcelExcludedByUseCode(parcel, filters._excludedUseCodes, coverageCap)
+    ) {
+      return false
+    }
+  }
+
+  if (isFilterEnabled(filters, 'environment')) {
+    if (parcelExcludedByEnv(parcel, filters)) return false
+  }
+
+  if (isFilterEnabled(filters, 'freeway')) {
+    if ((parcel.freeway_overlap_frac ?? 0) >= FREEWAY_OVERLAP_THRESHOLD) {
+      return false
+    }
+  }
+
   return true
 }
 
@@ -178,6 +220,17 @@ function IconHazard() {
   )
 }
 
+function IconFreeway() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 4h16v2H4V4zm0 14h16v2H4v-2zM3 8h4l1.5 8h-2L5.2 10H3V8zm14 0h4v2h-2.2l-1.3 6h-2L17 8zm-6.5 0h3v2h-1v2h1v2h-1v2h-1v-2h-1v-2h1V10h-1V8z"
+      />
+    </svg>
+  )
+}
+
 function IconAspect() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -249,10 +302,32 @@ const FILTER_SECTIONS = [
     overviewLabel: 'Hazards',
     icon: IconHazard,
   },
+  {
+    id: 'freeway',
+    label: 'Freeways',
+    overviewLabel: 'Freeways',
+    icon: IconFreeway,
+  },
 ]
+
+export function defaultEnabledFilters() {
+  return Object.fromEntries(FILTER_SECTIONS.map((section) => [section.id, true]))
+}
+
+function IconSliders() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M3 7h11v2H3V7zm14 0h4v2h-4V7zM3 15h4v2H3v-2zm7 0h11v2H10v-2zM14 5v6h2V5h-2zM6 13v6h2v-6H6z"
+      />
+    </svg>
+  )
+}
 
 function overviewValue(sectionId, filters) {
   if (!filters) return '—'
+  if (!isFilterEnabled(filters, sectionId)) return 'Off'
 
   if (sectionId === 'location') {
     const labels = filters.cities.map(cityLabel)
@@ -299,10 +374,100 @@ function overviewValue(sectionId, filters) {
     return `${s}/${m}/${n} m`
   }
 
+  if (sectionId === 'freeway') {
+    return `≥ ${Math.round(FREEWAY_OVERLAP_THRESHOLD * 100)}% in buffer`
+  }
+
   return '—'
 }
 
+function FilterToggle({ checked, onChange, label, hint }) {
+  return (
+    <div className="filter-toggle">
+      <span className="filter-toggle-text">
+        <span className="filter-toggle-label">{label}</span>
+        {hint ? <span className="filter-toggle-hint">{hint}</span> : null}
+      </span>
+      <button
+        type="button"
+        className={`filter-switch${checked ? ' filter-switch-on' : ''}`}
+        role="switch"
+        aria-checked={checked}
+        aria-label={`${label}: ${checked ? 'on' : 'off'}`}
+        onClick={() => onChange(!checked)}
+      >
+        <span className="filter-switch-knob" />
+      </button>
+    </div>
+  )
+}
+
+function FilterControlDetail({ filters, setEnabled, setAllEnabled }) {
+  const enabledCount = FILTER_SECTIONS.filter((section) =>
+    isFilterEnabled(filters, section.id),
+  ).length
+  const total = FILTER_SECTIONS.length
+
+  return (
+    <>
+      <h2 className="filters-detail-title">Filter control</h2>
+      <p className="filters-detail-desc">
+        Turn filter groups on or off without losing their settings. With every
+        group off, the map shows all parcels in the loaded county dataset.
+        Re-enable groups one by one to see what each one removes.
+      </p>
+      <div className="filters-detail-controls">
+        <div className="filter-control-actions">
+          <button
+            type="button"
+            className="filter-control-action"
+            onClick={() => setAllEnabled(true)}
+            disabled={enabledCount === total}
+          >
+            Turn all on
+          </button>
+          <button
+            type="button"
+            className="filter-control-action"
+            onClick={() => setAllEnabled(false)}
+            disabled={enabledCount === 0}
+          >
+            Turn all off
+          </button>
+          <span className="filter-control-count">
+            {enabledCount} of {total} on
+          </span>
+        </div>
+        <div className="filter-control-toggles">
+          {FILTER_SECTIONS.map((section) => (
+            <FilterToggle
+              key={section.id}
+              label={section.label}
+              hint={
+                section.id === 'buildings'
+                  ? 'Affects ranking and the use-code 300 exception'
+                  : section.id === 'freeway'
+                    ? 'Hides parcels ≥50% inside the 20 m highway buffer'
+                    : undefined
+              }
+              checked={isFilterEnabled(filters, section.id)}
+              onChange={(next) => setEnabled(section.id, next)}
+            />
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
 function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleCity, toggleIncludeCluster }) {
+  if (sectionId === 'control') {
+    return null
+  }
+
+  const enabled = isFilterEnabled(filters, sectionId)
+
+  const body = (() => {
   if (sectionId === 'location') {
     return (
       <>
@@ -318,6 +483,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                 type="checkbox"
                 checked={filters.cities.includes(city)}
                 onChange={() => toggleCity(city)}
+                disabled={!enabled}
               />
               {cityLabel(city)}
             </label>
@@ -344,6 +510,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                 min="0"
                 step="0.1"
                 value={filters.minAcres}
+                disabled={!enabled}
                 onChange={(e) => set({ minAcres: Number(e.target.value) })}
               />
             </label>
@@ -354,6 +521,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                 min="0"
                 step="0.1"
                 value={filters.maxAcres}
+                disabled={!enabled}
                 onChange={(e) => set({ maxAcres: Number(e.target.value) })}
               />
             </label>
@@ -382,6 +550,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                 min="1"
                 step="0.5"
                 value={filters.maxAspectRatio}
+                disabled={!enabled}
                 onChange={(e) => {
                   const n = Number(e.target.value)
                   set({
@@ -420,6 +589,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                 min="0"
                 step="1"
                 value={filters.minUsableWidthM}
+                disabled={!enabled}
                 onChange={(e) => {
                   const n = Number(e.target.value)
                   set({
@@ -458,6 +628,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
               <input
                 type="checkbox"
                 checked={filters.includeClusters[cluster.id]}
+                disabled={!enabled}
                 onChange={() => toggleIncludeCluster(cluster.id)}
               />
               <span>
@@ -493,6 +664,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                 max="1"
                 step="0.01"
                 value={filters.maxCoverageRatio}
+                disabled={!enabled}
                 onChange={(e) => set({ maxCoverageRatio: Number(e.target.value) })}
               />
             </label>
@@ -515,6 +687,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
             <input
               type="checkbox"
               checked={filters.onlyLeads}
+              disabled={!enabled}
               onChange={(e) => set({ onlyLeads: e.target.checked })}
             />
             Only lead parcels (Track A or B)
@@ -524,7 +697,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
               type="checkbox"
               checked={filters.requireBothTracks}
               onChange={(e) => set({ requireBothTracks: e.target.checked })}
-              disabled={!filters.onlyLeads}
+              disabled={!enabled || !filters.onlyLeads}
             />
             Only strongest leads (both tracks)
           </label>
@@ -563,6 +736,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                   min="0"
                   step="5"
                   value={filters.envStrongMeters}
+                  disabled={!enabled}
                   onChange={(e) => setMeters('envStrongMeters', e.target.value)}
                 />
                 <span className="filter-env-unit">m</span>
@@ -582,6 +756,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                   min="0"
                   step="5"
                   value={filters.envMediumMeters}
+                  disabled={!enabled}
                   onChange={(e) => setMeters('envMediumMeters', e.target.value)}
                 />
                 <span className="filter-env-unit">m</span>
@@ -601,6 +776,7 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
                   min="0"
                   step="5"
                   value={filters.envNoteMeters}
+                  disabled={!enabled}
                   onChange={(e) => setMeters('envNoteMeters', e.target.value)}
                 />
                 <span className="filter-env-unit">m</span>
@@ -618,7 +794,45 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
     )
   }
 
+  if (sectionId === 'freeway') {
+    const pct = Math.round(FREEWAY_OVERLAP_THRESHOLD * 100)
+    return (
+      <>
+        <h2 className="filters-detail-title">Freeways</h2>
+        <p className="filters-detail-desc">
+          Hide parcels whose footprint falls mostly inside Caltrans State
+          Highway Network buffers (20 m around SHN centerlines in Alameda
+          County). Overlap is measured against the union of all buffers, so
+          coverage can add up across multiple highway segments without
+          double-counting shared area.
+        </p>
+        <div className="filters-detail-controls">
+          <p className="filter-hint filter-hint-block">
+            When this filter is on, parcels with ≥{pct}% of their area inside
+            the buffer are removed from the map and list. Turn the group off in
+            Filter control to keep those parcels visible.
+          </p>
+        </div>
+      </>
+    )
+  }
+
   return null
+  })()
+
+  if (!body) return null
+
+  return (
+    <div className={!enabled ? 'filters-detail-disabled' : undefined}>
+      {!enabled ? (
+        <p className="filter-disabled-banner">
+          This filter is turned off in Filter control. Settings below are kept
+          but not applied to the map.
+        </p>
+      ) : null}
+      {body}
+    </div>
+  )
 }
 
 export default function FilterPanel({
@@ -629,7 +843,7 @@ export default function FilterPanel({
   expanded,
   onExpandedChange,
 }) {
-  const [activeSection, setActiveSection] = useState('location')
+  const [activeSection, setActiveSection] = useState('control')
 
   useEffect(() => {
     if (!expanded) return
@@ -643,6 +857,24 @@ export default function FilterPanel({
   if (!filters) return null
 
   const set = (patch) => onChange(attachExcludedCodes({ ...filters, ...patch }))
+
+  const setEnabled = (id, next) => {
+    set({
+      enabled: {
+        ...defaultEnabledFilters(),
+        ...filters.enabled,
+        [id]: next,
+      },
+    })
+  }
+
+  const setAllEnabled = (next) => {
+    set({
+      enabled: Object.fromEntries(
+        FILTER_SECTIONS.map((section) => [section.id, next]),
+      ),
+    })
+  }
 
   const toggleIncludeCluster = (clusterId) => {
     const next = {
@@ -659,22 +891,37 @@ export default function FilterPanel({
     set({ cities: next })
   }
 
+  const enabledCount = FILTER_SECTIONS.filter((section) =>
+    isFilterEnabled(filters, section.id),
+  ).length
+
   if (expanded) {
     return (
       <div className="filters-expanded" role="dialog" aria-label="Filters">
         <aside className="filters-nav">
+          <button
+            type="button"
+            className={`filters-nav-item${activeSection === 'control' ? ' filters-nav-item-active' : ''}`}
+            onClick={() => setActiveSection('control')}
+          >
+            <IconSliders />
+            Filter control
+          </button>
+          <div className="filters-nav-divider" />
           {FILTER_SECTIONS.map((section) => {
             const Icon = section.icon
             const active = activeSection === section.id
+            const on = isFilterEnabled(filters, section.id)
             return (
               <button
                 key={section.id}
                 type="button"
-                className={`filters-nav-item${active ? ' filters-nav-item-active' : ''}`}
+                className={`filters-nav-item${active ? ' filters-nav-item-active' : ''}${!on ? ' filters-nav-item-off' : ''}`}
                 onClick={() => setActiveSection(section.id)}
               >
                 <Icon />
                 {section.label}
+                {!on ? <span className="filters-nav-off">Off</span> : null}
               </button>
             )
           })}
@@ -689,14 +936,22 @@ export default function FilterPanel({
             Collapse filters
           </button>
           <div className="filters-detail-body">
-            <FilterSectionDetail
-              sectionId={activeSection}
-              filters={filters}
-              set={set}
-              availableCities={availableCities}
-              toggleCity={toggleCity}
-              toggleIncludeCluster={toggleIncludeCluster}
-            />
+            {activeSection === 'control' ? (
+              <FilterControlDetail
+                filters={filters}
+                setEnabled={setEnabled}
+                setAllEnabled={setAllEnabled}
+              />
+            ) : (
+              <FilterSectionDetail
+                sectionId={activeSection}
+                filters={filters}
+                set={set}
+                availableCities={availableCities}
+                toggleCity={toggleCity}
+                toggleIncludeCluster={toggleIncludeCluster}
+              />
+            )}
           </div>
         </section>
       </div>
@@ -711,11 +966,17 @@ export default function FilterPanel({
           <p className="filter-count">
             {counts.visible.toLocaleString()} of {counts.total.toLocaleString()} parcels
           </p>
+          <p className="filter-count">
+            {enabledCount} of {FILTER_SECTIONS.length} filters on
+          </p>
         </div>
 
         <dl className="filters-overview-list">
           {FILTER_SECTIONS.map((section) => (
-            <div key={section.id} className="filters-overview-row">
+            <div
+              key={section.id}
+              className={`filters-overview-row${!isFilterEnabled(filters, section.id) ? ' filters-overview-row-off' : ''}`}
+            >
               <dt>{section.overviewLabel}</dt>
               <dd>{overviewValue(section.id, filters)}</dd>
             </div>
