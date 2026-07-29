@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compute parcel area from geometry and keep 1–2.5 acre lots.
+"""Compute parcel area from geometry and keep 1–10 acre lots.
 
 Reads filtered/Parcels_Target_Cities.csv and writes
 filtered/Parcels_Suitable_Size.csv.

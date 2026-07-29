@@ -8,7 +8,7 @@ TARGET_CITIES = (
 )
 
 MIN_ACRES = 1.0
-MAX_ACRES = 2.5
+MAX_ACRES = 10.0
 SQ_M_PER_ACRE = 4046.8564224
 
 # Max length÷width of the minimum-rotated bounding rectangle.

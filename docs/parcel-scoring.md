@@ -44,7 +44,7 @@ MIN_ACRES ≤ area_acres ≤ MAX_ACRES
 **Defaults:**
 
 - `MIN_ACRES = 1.0`
-- `MAX_ACRES = 2.5`
+- `MAX_ACRES = 10.0`
 - `SQ_M_PER_ACRE = 4046.8564224`
 
 Parcels with missing geometry are dropped.
@@ -154,7 +154,7 @@ Output: `processed/parcel_zoning_crosswalk.csv` → baked onto each parcel as `z
 
 ### 1.8 Frontend export universe (`export_geojson.py`)
 
-**Source:** `filtered/Parcels_Target_Cities.csv` (all 4 target cities, **not** pre-filtered to 1–2.5 acres).
+**Source:** `filtered/Parcels_Target_Cities.csv` (all 4 target cities, **not** pre-filtered to 1–10 acres).
 
 **Eliminated at export:**
 
@@ -174,7 +174,7 @@ Output: `processed/parcel_zoning_crosswalk.csv` → baked onto each parcel as `z
 | Setting | Default |
 |---------|---------|
 | `minAcres` | 1.0 |
-| `maxAcres` | 2.5 |
+| `maxAcres` | 10.0 |
 | `maxCoverageRatio` | 0.2 |
 | `onlyLeads` | false |
 | `requireBothTracks` | false |
@@ -236,7 +236,7 @@ parcel.city ∈ filters.cities
 filters.minAcres ≤ parcel.area_acres ≤ filters.maxAcres
 ```
 
-**Defaults:** `1.0 ≤ area_acres ≤ 2.5`
+**Defaults:** `1.0 ≤ area_acres ≤ 10.0`
 
 Also requires `area_acres != null`.
 
@@ -481,7 +481,7 @@ Raw county parcels (~490k)
   ↓ zoning join → parcel.zoning tier A/B/C
   ↓ parcel_index.json (~203k parcels)
   ↓ frontend city filter
-  ↓ frontend acreage filter (1.0–2.5 ac default)
+  ↓ frontend acreage filter (1.0–10.0 ac default)
   ↓ frontend use-code cluster filter (+ 300 exception)
   ↓ optional: onlyLeads / requireBothTracks
   = VISIBLE PARCELS
