@@ -391,6 +391,36 @@ def main() -> None:
         }
     )
 
+    print("Annotating 3DEP slope…")
+    from annotate_slope import (
+        DEFAULT_CELL_SIZE_M,
+        DEFAULT_STEEP_PCT,
+        annotate_slope,
+        fetch_slope_mosaic,
+    )
+
+    apns = set(index["parcels"].keys())
+    subset = geom[geom["APN"].isin(apns)].copy()
+    if subset.crs is None:
+        subset = subset.set_crs("EPSG:4326")
+    subset_m = subset.to_crs("EPSG:3857")
+    bounds = tuple(float(x) for x in subset_m.total_bounds)
+    mosaic = fetch_slope_mosaic(bounds, cell_size=DEFAULT_CELL_SIZE_M)
+    slope_stats = annotate_slope(
+        index["parcels"], geom, mosaic, steep_pct=DEFAULT_STEEP_PCT
+    )
+    print(
+        f"  slope: {slope_stats['hit_parcels']:,} parcels; "
+        f"{slope_stats['steep_ge_half']:,} ≥50% steep cells; "
+        f"avg mean {slope_stats['mean_of_means']:.2f}%"
+    )
+    index.setdefault("defaults", {}).update(
+        {
+            "slopeCellSizeM": DEFAULT_CELL_SIZE_M,
+            "slopeSteepPct": DEFAULT_STEEP_PCT,
+        }
+    )
+
     index_path = OUT_DIR / "parcel_index.json"
     index_path.write_text(json.dumps(index))
     print(f"{index_path.name}: {len(index['parcels']):,} parcels, "

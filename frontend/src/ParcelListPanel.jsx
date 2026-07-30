@@ -12,6 +12,10 @@ import {
   ZONING_TIER_LABELS,
 } from './zoningTiers.js'
 import { ZONING_TIER_POINTS } from './parcelScore.js'
+import {
+  DEFAULT_SLOPE_STEEP_PCT,
+  slopeTier,
+} from './slopeTiers.js'
 
 function trackColor(tracks) {
   if (tracks === 'Track A + Track B') return BOTH_TRACKS_COLOR
@@ -225,6 +229,33 @@ function ParcelDetail({
           <DetailRow label="Footprint coverage">
             {(parcel.coverage_ratio * 100).toFixed(1)}%
           </DetailRow>
+        )}
+
+        {parcel?.slope_mean_pct != null && (
+          <div className="parcel-detail-section">
+            <b>Slope</b>
+            {(() => {
+              const tier = slopeTier(parcel)
+              return (
+                <>
+                  {tier && (
+                    <span
+                      className="parcel-list-chip parcel-detail-chip"
+                      style={{ background: tier.fillColor, color: '#111' }}
+                    >
+                      {tier.label}
+                    </span>
+                  )}
+                  <p className="parcel-detail-muted">
+                    Mean grade {parcel.slope_mean_pct.toFixed(1)}%
+                    {parcel.slope_steep_frac != null
+                      ? ` · ${(parcel.slope_steep_frac * 100).toFixed(0)}% of parcel ≥ ${DEFAULT_SLOPE_STEEP_PCT}%`
+                      : ''}
+                  </p>
+                </>
+              )
+            })()}
+          </div>
         )}
 
         <div className="parcel-detail-section">

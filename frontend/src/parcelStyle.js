@@ -1,11 +1,11 @@
 import { parcelOutlineStyle } from './parcelScore.js'
+import { slopeFillColor } from './slopeTiers.js'
 
 export const SATELLITE_MIN_ZOOM = 15
 
 const PARCEL_FILL = {
-  fillColor: '#94a3b8',
-  cartoFillOpacity: 0.18,
-  satelliteFillOpacity: 0.32,
+  cartoFillOpacity: 0.42,
+  satelliteFillOpacity: 0.5,
 }
 
 export function styleParcelFeature(parcel, { satellite, maxCoverageRatio }) {
@@ -18,7 +18,7 @@ export function styleParcelFeature(parcel, { satellite, maxCoverageRatio }) {
     color: outline.color,
     weight: outline.weight,
     opacity: 0.95,
-    fillColor: PARCEL_FILL.fillColor,
+    fillColor: slopeFillColor(parcel),
     fillOpacity,
   }
 }

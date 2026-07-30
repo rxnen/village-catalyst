@@ -32,6 +32,11 @@ import {
   ZONING_TIER_COLORS,
   ZONING_TIER_LABELS,
 } from './zoningTiers.js'
+import {
+  DEFAULT_SLOPE_STEEP_PCT,
+  SLOPE_TIERS,
+  formatSlopeSummary,
+} from './slopeTiers.js'
 
 const MAP_CENTER = [37.74, -122.05]
 
@@ -159,6 +164,10 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
           parcel.coverage_ratio != null
             ? `<br/>Footprint coverage: ${(parcel.coverage_ratio * 100).toFixed(1)}%`
             : ''
+        const steepPct =
+          parcelIndex?.defaults?.slopeSteepPct ?? DEFAULT_SLOPE_STEEP_PCT
+        const slopeLine = formatSlopeSummary(parcel, steepPct)
+        const slopeBlock = slopeLine ? `<br/>${slopeLine}` : ''
         const trackBlock = tracks ? `<br/><b>${tracks}</b>` : ''
         const { total: scoreTotal, breakdown } = parcelScore(
           parcel,
@@ -182,6 +191,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
             `<br/>${parcel.area_acres.toFixed(2)} acres` +
             ratioBlock +
             coverageBlock +
+            slopeBlock +
             zoningBlock +
             scoreBlock +
             trackBlock +
@@ -194,7 +204,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
     return () => {
       map.removeLayer(layer)
     }
-  }, [map, parcels, filters, showDetail, satellite])
+  }, [map, parcels, filters, showDetail, satellite, parcelIndex])
 
   return null
 }
@@ -272,6 +282,26 @@ function Legend() {
         <div key={tier.id} className="legend-row" title={tier.hint}>
           <span className="swatch swatch-outline" style={{ borderColor: tier.color }} />
           {tier.label} ({tier.minScore}+)
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SlopeLegend() {
+  const rangeLabel = (tier, index) => {
+    const prev = index === 0 ? 0 : SLOPE_TIERS[index - 1].maxMeanPct
+    if (!Number.isFinite(tier.maxMeanPct)) return `≥${prev}%`
+    if (index === 0) return `<${tier.maxMeanPct}%`
+    return `${prev}–${tier.maxMeanPct}%`
+  }
+  return (
+    <div className="legend slope-legend" title="Parcel fill colors by mean percent grade (USGS 3DEP)">
+      <div className="hazard-legend-title">Slope (fill)</div>
+      {SLOPE_TIERS.map((tier, index) => (
+        <div key={tier.id} className="legend-row" title={tier.hint}>
+          <span className="swatch" style={{ background: tier.fillColor }} />
+          {tier.label} ({rangeLabel(tier, index)})
         </div>
       ))}
     </div>
@@ -449,6 +479,7 @@ export default function App() {
       {!filtersExpanded && (
         <>
           <Legend />
+          <SlopeLegend />
           {zoningVisible && <ZoningTierLegend />}
           {anyHazardVisible && (
             <HazardLegend stackedAboveZoning={zoningVisible} />

@@ -464,6 +464,7 @@ Prime vacant implies synergy-eligible stacks (both tracks, top use code, low cov
 |--------|------|
 | **GPLU / General Plan category** | Popup and optional map overlay only |
 | **Zoning polygons on the map** | Visual A/B/C tint; scoring uses the per-parcel `zoning` field from the crosswalk |
+| **Slope (`slope_mean_pct` / `slope_steep_frac`)** | Parcel **fill** color by mean % grade (USGS 3DEP); not yet a visibility filter or score input |
 | **Land / Imps raw dollar values** | Not in frontend; only derived ratios/tracks |
 | **HOEX / OTEX raw values** | Only used to compute Track A |
 | **EconomicUnit** | Only used to compute Track B |
