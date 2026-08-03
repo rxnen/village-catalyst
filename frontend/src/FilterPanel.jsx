@@ -9,6 +9,11 @@ import {
   DEFAULT_ENV_THRESHOLDS,
   parcelExcludedByEnv,
 } from './envirostorProximity.js'
+import {
+  SLOPE_TIERS,
+  defaultIncludeSlopeTiers,
+  parcelExcludedBySlope,
+} from './slopeTiers.js'
 
 export const TRACK_A_COLOR = '#f9a825'
 export const TRACK_B_COLOR = '#00897b'
@@ -96,6 +101,10 @@ export function passesFilters(parcel, filters) {
     if ((parcel.freeway_overlap_frac ?? 0) >= FREEWAY_OVERLAP_THRESHOLD) {
       return false
     }
+  }
+
+  if (isFilterEnabled(filters, 'slope')) {
+    if (parcelExcludedBySlope(parcel, filters.includeSlopeTiers)) return false
   }
 
   return true
@@ -231,6 +240,17 @@ function IconFreeway() {
   )
 }
 
+function IconSlope() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M2 20 14 4l8 16H2zm4.5-2h11.1L14 8.6 6.5 18z"
+      />
+    </svg>
+  )
+}
+
 function IconAspect() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -308,6 +328,12 @@ const FILTER_SECTIONS = [
     overviewLabel: 'Freeways',
     icon: IconFreeway,
   },
+  {
+    id: 'slope',
+    label: 'Slope',
+    overviewLabel: 'Slope',
+    icon: IconSlope,
+  },
 ]
 
 export function defaultEnabledFilters() {
@@ -376,6 +402,13 @@ function overviewValue(sectionId, filters) {
 
   if (sectionId === 'freeway') {
     return `≥ ${Math.round(FREEWAY_OVERLAP_THRESHOLD * 100)}% in buffer`
+  }
+
+  if (sectionId === 'slope') {
+    const selected = SLOPE_TIERS.filter(
+      (tier) => filters.includeSlopeTiers?.[tier.id] !== false,
+    ).map((tier) => tier.label)
+    return summarizeItems(selected, 1)
   }
 
   return '—'
@@ -460,7 +493,15 @@ function FilterControlDetail({ filters, setEnabled, setAllEnabled }) {
   )
 }
 
-function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleCity, toggleIncludeCluster }) {
+function FilterSectionDetail({
+  sectionId,
+  filters,
+  set,
+  availableCities,
+  toggleCity,
+  toggleIncludeCluster,
+  toggleIncludeSlopeTier,
+}) {
   if (sectionId === 'control') {
     return null
   }
@@ -817,6 +858,58 @@ function FilterSectionDetail({ sectionId, filters, set, availableCities, toggleC
     )
   }
 
+  if (sectionId === 'slope') {
+    return (
+      <>
+        <h2 className="filters-detail-title">Slope</h2>
+        <p className="filters-detail-desc">
+          Checked mean-grade bands stay visible. Unchecked bands are hidden.
+          Grades come from USGS 3DEP percent slope; Very steep (≥25%) is off by
+          default because it is usually a poor fit for housing.
+        </p>
+        <div className="filters-detail-controls filters-detail-clusters">
+          {SLOPE_TIERS.map((tier, index) => {
+            const prev = index === 0 ? 0 : SLOPE_TIERS[index - 1].maxMeanPct
+            const range = Number.isFinite(tier.maxMeanPct)
+              ? index === 0
+                ? `<${tier.maxMeanPct}%`
+                : `${prev}–${tier.maxMeanPct}%`
+              : `≥${prev}%`
+            return (
+              <label
+                key={tier.id}
+                className="filter-check filter-check-cluster"
+                title={tier.hint}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.includeSlopeTiers?.[tier.id] !== false}
+                  disabled={!enabled}
+                  onChange={() => toggleIncludeSlopeTier(tier.id)}
+                />
+                <span>
+                  <span className="filter-cluster-label">
+                    <span
+                      className="swatch"
+                      style={{
+                        background: tier.fillColor,
+                        display: 'inline-block',
+                        marginRight: 6,
+                        verticalAlign: 'middle',
+                      }}
+                    />
+                    {tier.label} ({range})
+                  </span>
+                  <span className="filter-cluster-hint">{tier.hint}</span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </>
+    )
+  }
+
   return null
   })()
 
@@ -882,6 +975,19 @@ export default function FilterPanel({
       [clusterId]: !filters.includeClusters[clusterId],
     }
     set({ includeClusters: next })
+  }
+
+  const toggleIncludeSlopeTier = (tierId) => {
+    const current = {
+      ...defaultIncludeSlopeTiers(),
+      ...filters.includeSlopeTiers,
+    }
+    set({
+      includeSlopeTiers: {
+        ...current,
+        [tierId]: !current[tierId],
+      },
+    })
   }
 
   const toggleCity = (city) => {
@@ -950,6 +1056,7 @@ export default function FilterPanel({
                 availableCities={availableCities}
                 toggleCity={toggleCity}
                 toggleIncludeCluster={toggleIncludeCluster}
+                toggleIncludeSlopeTier={toggleIncludeSlopeTier}
               />
             )}
           </div>

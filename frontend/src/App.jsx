@@ -35,6 +35,7 @@ import {
 import {
   DEFAULT_SLOPE_STEEP_PCT,
   SLOPE_TIERS,
+  defaultIncludeSlopeTiers,
   formatSlopeSummary,
 } from './slopeTiers.js'
 
@@ -374,6 +375,10 @@ export default function App() {
         includeClusters: {
           ...defaultIncludeClusters(),
           ...d.includeClusters,
+        },
+        includeSlopeTiers: {
+          ...defaultIncludeSlopeTiers(),
+          ...d.includeSlopeTiers,
         },
         envStrongMeters: d.envStrongMeters ?? DEFAULT_ENV_THRESHOLDS.envStrongMeters,
         envMediumMeters: d.envMediumMeters ?? DEFAULT_ENV_THRESHOLDS.envMediumMeters,

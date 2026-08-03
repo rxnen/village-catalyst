@@ -1,4 +1,4 @@
-/** Slope steepness tiers for parcel fill colors (percent grade). */
+/** Slope steepness tiers for parcel fill colors / visibility (percent grade). */
 
 export const SLOPE_TIERS = [
   {
@@ -7,6 +7,7 @@ export const SLOPE_TIERS = [
     maxMeanPct: 5,
     fillColor: '#2e7d32',
     hint: 'Mean slope under 5% — generally easy to build',
+    defaultIncluded: true,
   },
   {
     id: 'gentle',
@@ -14,6 +15,7 @@ export const SLOPE_TIERS = [
     maxMeanPct: 10,
     fillColor: '#9ccc65',
     hint: 'Mean slope 5–10%',
+    defaultIncluded: true,
   },
   {
     id: 'moderate',
@@ -21,6 +23,7 @@ export const SLOPE_TIERS = [
     maxMeanPct: 15,
     fillColor: '#fdd835',
     hint: 'Mean slope 10–15% — grading gets costly',
+    defaultIncluded: true,
   },
   {
     id: 'steep',
@@ -28,6 +31,7 @@ export const SLOPE_TIERS = [
     maxMeanPct: 25,
     fillColor: '#fb8c00',
     hint: 'Mean slope 15–25% — often poor for housing',
+    defaultIncluded: true,
   },
   {
     id: 'very_steep',
@@ -35,6 +39,7 @@ export const SLOPE_TIERS = [
     maxMeanPct: Infinity,
     fillColor: '#c62828',
     hint: 'Mean slope 25%+ — typically unsuitable',
+    defaultIncluded: false,
   },
 ]
 
@@ -42,6 +47,12 @@ export const SLOPE_UNKNOWN_FILL = '#94a3b8'
 
 /** Default percent-grade threshold used for slope_steep_frac. */
 export const DEFAULT_SLOPE_STEEP_PCT = 15
+
+export function defaultIncludeSlopeTiers() {
+  return Object.fromEntries(
+    SLOPE_TIERS.map((tier) => [tier.id, tier.defaultIncluded]),
+  )
+}
 
 export function slopeTier(parcel) {
   const mean = parcel?.slope_mean_pct
@@ -54,6 +65,14 @@ export function slopeTier(parcel) {
 
 export function slopeFillColor(parcel) {
   return slopeTier(parcel)?.fillColor ?? SLOPE_UNKNOWN_FILL
+}
+
+/** Hide when the parcel's slope tier is unchecked. Missing slope stays visible. */
+export function parcelExcludedBySlope(parcel, includeSlopeTiers) {
+  if (!includeSlopeTiers) return false
+  const tier = slopeTier(parcel)
+  if (!tier) return false
+  return includeSlopeTiers[tier.id] === false
 }
 
 export function formatSlopeSummary(parcel, steepPct = DEFAULT_SLOPE_STEEP_PCT) {

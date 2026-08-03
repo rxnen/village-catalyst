@@ -293,7 +293,21 @@ if requireBothTracks: require track_a AND track_b
 
 `maxCoverageRatio` (default **0.2**) does **not** hide parcels. It is used only for **ranking** and **scoring** (and the code-300 visibility exception above).
 
-### 3.6 Viewport / list cap (soft limit)
+### 3.6 Slope tier filter
+
+Checked mean-grade bands (from USGS 3DEP `slope_mean_pct`) stay visible; unchecked bands are hidden.
+
+| Tier | Mean grade | Default |
+|------|------------|---------|
+| Flat | &lt; 5% | shown |
+| Gentle | 5–10% | shown |
+| Moderate | 10–15% | shown |
+| Steep | 15–25% | shown |
+| Very steep | ≥ 25% | **hidden** |
+
+Parcels with missing slope stay visible. Turn the Slope group off in Filter control to ignore this filter entirely.
+
+### 3.7 Viewport / list cap (soft limit)
 
 ```
 QUERY_LIMIT = 2000 parcels per map view
@@ -464,7 +478,7 @@ Prime vacant implies synergy-eligible stacks (both tracks, top use code, low cov
 |--------|------|
 | **GPLU / General Plan category** | Popup and optional map overlay only |
 | **Zoning polygons on the map** | Visual A/B/C tint; scoring uses the per-parcel `zoning` field from the crosswalk |
-| **Slope (`slope_mean_pct` / `slope_steep_frac`)** | Parcel **fill** color by mean % grade (USGS 3DEP); not yet a visibility filter or score input |
+| **Slope fill colors** | Map fill still uses mean % grade; visibility uses the Slope tier checkboxes (Part 3.6). Not a score input |
 | **Land / Imps raw dollar values** | Not in frontend; only derived ratios/tracks |
 | **HOEX / OTEX raw values** | Only used to compute Track A |
 | **EconomicUnit** | Only used to compute Track B |
@@ -484,6 +498,7 @@ Raw county parcels (~490k)
   ↓ frontend city filter
   ↓ frontend acreage filter (1.0–10.0 ac default)
   ↓ frontend use-code cluster filter (+ 300 exception)
+  ↓ frontend slope tier filter (Very steep hidden by default)
   ↓ optional: onlyLeads / requireBothTracks
   = VISIBLE PARCELS
   ↓ list: parcelListRank (bands + leadRank + useCodeRank; band 0 needs Tier A)
