@@ -12,6 +12,7 @@ import FilterPanel, {
   countMatching,
   defaultEnabledFilters,
   effectiveCities,
+  isFilterEnabled,
 } from './FilterPanel.jsx'
 import { attachExcludedCodes, defaultIncludeClusters } from './useCodeClusters.js'
 import {
@@ -140,6 +141,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
         return styleParcelFeature(parcel, {
           satellite,
           maxCoverageRatio: filters.maxCoverageRatio,
+          colorBySlope: isFilterEnabled(filters, 'slope'),
         })
       },
       onEachFeature: (feature, layer) => {
@@ -484,7 +486,7 @@ export default function App() {
       {!filtersExpanded && (
         <>
           <Legend />
-          <SlopeLegend />
+          {filters && isFilterEnabled(filters, 'slope') && <SlopeLegend />}
           {zoningVisible && <ZoningTierLegend />}
           {anyHazardVisible && (
             <HazardLegend stackedAboveZoning={zoningVisible} />

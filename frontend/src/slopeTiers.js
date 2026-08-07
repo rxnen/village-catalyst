@@ -77,12 +77,12 @@ export function parcelExcludedBySlope(parcel, includeSlopeTiers) {
 
 export function formatSlopeSummary(parcel, steepPct = DEFAULT_SLOPE_STEEP_PCT) {
   if (parcel?.slope_mean_pct == null) return null
+  const tier = slopeTier(parcel)
+  const flag = tier ? tier.label : 'Unknown'
   const mean = parcel.slope_mean_pct.toFixed(1)
   const steep =
     parcel.slope_steep_frac != null
       ? `; ${(parcel.slope_steep_frac * 100).toFixed(0)}% of area ≥ ${steepPct}%`
       : ''
-  const tier = slopeTier(parcel)
-  const label = tier ? ` · ${tier.label}` : ''
-  return `Slope: ${mean}% mean${steep}${label}`
+  return `Slope: ${flag} · ${mean}% mean${steep}`
 }
