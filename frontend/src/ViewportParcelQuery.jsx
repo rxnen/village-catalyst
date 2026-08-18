@@ -5,6 +5,7 @@ import {
   effectiveUseCodeRank,
   parcelListRank,
 } from './useCodeRank.js'
+import { parcelHierarchyTier, parcelScore } from './parcelScore.js'
 import { captureMapView, mapViewChangedSignificantly } from './mapViewThreshold.js'
 
 export const QUERY_LIMIT = 2000
@@ -19,6 +20,8 @@ function buildListItems(parcels, filters, bounds) {
     if (!bounds.contains([parcel.lat, parcel.lng])) continue
 
     const category = parcel.land_use?.category ?? 'unmatched'
+    const { total: score } = parcelScore(parcel, filters.maxCoverageRatio)
+    const hierarchy = parcelHierarchyTier(score)
     matches.push({
       apn,
       address: parcel.address?.trim() || 'No address',
@@ -35,10 +38,15 @@ function buildListItems(parcels, filters, bounds) {
       areaAcres: parcel.area_acres,
       zoningTier: parcel.zoning?.tier ?? null,
       zoningLabel: parcel.zoning?.matched_zone ?? parcel.zoning?.base_zone ?? null,
+      score,
+      hierarchyColor: hierarchy.color,
+      hierarchyLabel: hierarchy.label,
     })
   }
 
   matches.sort((a, b) => {
+    const scoreDiff = (b.score ?? 0) - (a.score ?? 0)
+    if (scoreDiff !== 0) return scoreDiff
     const rankDiff =
       parcelListRank(a, filters.maxCoverageRatio) -
       parcelListRank(b, filters.maxCoverageRatio)

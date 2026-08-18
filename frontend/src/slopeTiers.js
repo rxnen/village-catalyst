@@ -1,4 +1,4 @@
-/** Slope steepness tiers for parcel fill colors / visibility (percent grade). */
+/** Slope steepness tiers for visibility filtering and descriptions (percent grade). */
 
 export const SLOPE_TIERS = [
   {
@@ -43,8 +43,6 @@ export const SLOPE_TIERS = [
   },
 ]
 
-export const SLOPE_UNKNOWN_FILL = '#94a3b8'
-
 /** Default percent-grade threshold used for slope_steep_frac. */
 export const DEFAULT_SLOPE_STEEP_PCT = 15
 
@@ -61,10 +59,6 @@ export function slopeTier(parcel) {
     if (mean < tier.maxMeanPct) return tier
   }
   return SLOPE_TIERS[SLOPE_TIERS.length - 1]
-}
-
-export function slopeFillColor(parcel) {
-  return slopeTier(parcel)?.fillColor ?? SLOPE_UNKNOWN_FILL
 }
 
 /** Hide when the parcel's slope tier is unchecked. Missing slope stays visible. */

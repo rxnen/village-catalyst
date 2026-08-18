@@ -12,7 +12,6 @@ import FilterPanel, {
   countMatching,
   defaultEnabledFilters,
   effectiveCities,
-  isFilterEnabled,
 } from './FilterPanel.jsx'
 import { attachExcludedCodes, defaultIncludeClusters } from './useCodeClusters.js'
 import {
@@ -35,7 +34,6 @@ import {
 } from './zoningTiers.js'
 import {
   DEFAULT_SLOPE_STEEP_PCT,
-  SLOPE_TIERS,
   defaultIncludeSlopeTiers,
   formatSlopeSummary,
 } from './slopeTiers.js'
@@ -109,7 +107,6 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
   const [showDetail, setShowDetail] = useState(
     () => map.getZoom() >= PARCEL_DETAIL_MIN_ZOOM,
   )
-  const [satellite, setSatellite] = useState(() => isSatelliteZoom(map.getZoom()))
 
   useEffect(() => {
     if (!onParcelSelect) return
@@ -119,7 +116,6 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
   useEffect(() => {
     const update = () => {
       setShowDetail(map.getZoom() >= PARCEL_DETAIL_MIN_ZOOM)
-      setSatellite(isSatelliteZoom(map.getZoom()))
     }
     map.on('zoomend', update)
     return () => map.off('zoomend', update)
@@ -139,9 +135,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
           return { opacity: 0, fillOpacity: 0, weight: 0 }
         }
         return styleParcelFeature(parcel, {
-          satellite,
           maxCoverageRatio: filters.maxCoverageRatio,
-          colorBySlope: isFilterEnabled(filters, 'slope'),
         })
       },
       onEachFeature: (feature, layer) => {
@@ -207,7 +201,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
     return () => {
       map.removeLayer(layer)
     }
-  }, [map, parcels, filters, showDetail, satellite, parcelIndex])
+  }, [map, parcels, filters, showDetail, parcelIndex])
 
   return null
 }
@@ -285,26 +279,6 @@ function Legend() {
         <div key={tier.id} className="legend-row" title={tier.hint}>
           <span className="swatch swatch-outline" style={{ borderColor: tier.color }} />
           {tier.label} ({tier.minScore}+)
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function SlopeLegend() {
-  const rangeLabel = (tier, index) => {
-    const prev = index === 0 ? 0 : SLOPE_TIERS[index - 1].maxMeanPct
-    if (!Number.isFinite(tier.maxMeanPct)) return `≥${prev}%`
-    if (index === 0) return `<${tier.maxMeanPct}%`
-    return `${prev}–${tier.maxMeanPct}%`
-  }
-  return (
-    <div className="legend slope-legend" title="Parcel fill colors by mean percent grade (USGS 3DEP)">
-      <div className="hazard-legend-title">Slope (fill)</div>
-      {SLOPE_TIERS.map((tier, index) => (
-        <div key={tier.id} className="legend-row" title={tier.hint}>
-          <span className="swatch" style={{ background: tier.fillColor }} />
-          {tier.label} ({rangeLabel(tier, index)})
         </div>
       ))}
     </div>
@@ -486,7 +460,6 @@ export default function App() {
       {!filtersExpanded && (
         <>
           <Legend />
-          {filters && isFilterEnabled(filters, 'slope') && <SlopeLegend />}
           {zoningVisible && <ZoningTierLegend />}
           {anyHazardVisible && (
             <HazardLegend stackedAboveZoning={zoningVisible} />

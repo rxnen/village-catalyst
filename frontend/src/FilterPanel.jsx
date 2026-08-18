@@ -17,7 +17,7 @@ import {
 
 export const TRACK_A_COLOR = '#f9a825'
 export const TRACK_B_COLOR = '#00897b'
-export const BOTH_TRACKS_COLOR = '#c62828'
+export const BOTH_TRACKS_COLOR = '#1b5e20'
 
 export function isLead(parcel) {
   return parcel?.tracks?.length > 0

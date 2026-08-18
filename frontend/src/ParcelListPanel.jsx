@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import {
   BOTH_TRACKS_COLOR,
   TRACK_A_COLOR,
@@ -24,6 +25,23 @@ function trackColor(tracks) {
   return null
 }
 
+function isBothTracks(tracks) {
+  return tracks === 'Track A + Track B'
+}
+
+function trackChipStyle(tracks) {
+  const color = trackColor(tracks)
+  if (!color) return undefined
+  if (isBothTracks(tracks)) {
+    return { background: color, borderColor: color, color: '#fff' }
+  }
+  return { borderColor: color }
+}
+
+function hasLandUseMatch(category) {
+  return Boolean(category) && category !== 'unmatched'
+}
+
 function formatAddress(item) {
   if (item.address !== 'No address') return item.address
   const cityLine = [item.city, item.zip].filter(Boolean).join(' ')
@@ -33,6 +51,42 @@ function formatAddress(item) {
 function formatCity(city) {
   if (!city) return '—'
   return city[0] + city.slice(1).toLowerCase()
+}
+
+function addressGroupKey(item) {
+  const addr = item.address?.replace(/\s+/g, ' ').trim()
+  if (!addr || addr === 'No address') return null
+  const city = (item.city ?? '').trim().toLowerCase()
+  return `${addr.toLowerCase()}|${city}`
+}
+
+function groupListItems(items) {
+  const byKey = new Map()
+  const groups = []
+  for (const item of items) {
+    const key = addressGroupKey(item)
+    if (!key) {
+      groups.push({ id: `apn:${item.apn}`, items: [item] })
+      continue
+    }
+    let group = byKey.get(key)
+    if (!group) {
+      group = { id: key, items: [] }
+      byKey.set(key, group)
+      groups.push(group)
+    }
+    group.items.push(item)
+  }
+  return groups
+}
+
+function formatGroupAcres(items) {
+  const acres = items.map((item) => item.areaAcres).filter((value) => value != null)
+  if (!acres.length) return null
+  const min = Math.min(...acres)
+  const max = Math.max(...acres)
+  if (Math.abs(max - min) < 0.005) return `${min.toFixed(2)} ac`
+  return `${min.toFixed(2)}–${max.toFixed(2)} ac`
 }
 
 function formatEnvMeters(meters) {
@@ -199,8 +253,8 @@ function ParcelDetail({
           <b>Lead tracks</b>
           {tracks ? (
             <span
-              className="parcel-list-chip parcel-list-chip-outline parcel-detail-track"
-              style={{ borderColor: trackColor(tracks) }}
+              className={`parcel-list-chip parcel-detail-track${isBothTracks(tracks) ? '' : ' parcel-list-chip-outline'}`}
+              style={trackChipStyle(tracks)}
             >
               {tracks}
             </span>
@@ -322,12 +376,14 @@ function ParcelDetail({
 
         <div className="parcel-detail-section">
           <b>General Plan land use</b>
-          <span
-            className="parcel-list-chip parcel-detail-chip"
-            style={{ background: categoryColors[category] ?? categoryColors.unmatched }}
-          >
-            {categoryLabels[category] ?? categoryLabels.unmatched}
-          </span>
+          {hasLandUseMatch(category) && (
+            <span
+              className="parcel-list-chip parcel-detail-chip"
+              style={{ background: categoryColors[category] ?? categoryColors.unmatched }}
+            >
+              {categoryLabels[category] ?? category}
+            </span>
+          )}
           {landUse?.label ? (
             <>
               <p className="parcel-detail-landuse-name">{landUse.label}</p>
@@ -357,6 +413,125 @@ function ParcelDetail({
   )
 }
 
+function ParcelListRow({
+  item,
+  rank,
+  selected,
+  onActivate,
+  variant = 'single',
+  count = 1,
+  expanded = false,
+  acresLabel,
+  categoryLabels,
+  categoryColors,
+}) {
+  const isParent = variant === 'parent'
+  const isChild = variant === 'child'
+  const title = isChild ? `APN ${item.apn}` : formatAddress(item)
+  const acres =
+    acresLabel ?? (item.areaAcres != null ? `${item.areaAcres.toFixed(2)} ac` : null)
+
+  return (
+    <div
+      className={[
+        'parcel-list-item',
+        selected ? 'parcel-list-item-selected' : '',
+        isParent ? 'parcel-list-item-parent' : '',
+        isParent && expanded ? 'parcel-list-item-expanded' : '',
+        isChild ? 'parcel-list-item-child' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={{ borderLeftColor: item.hierarchyColor ?? '#bdbdbd' }}
+      onClick={onActivate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onActivate()
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-expanded={isParent ? expanded : undefined}
+    >
+      <span className="parcel-list-chevron" aria-hidden>
+        {isParent ? (expanded ? '▾' : '▸') : ''}
+      </span>
+      <span className="parcel-list-rank">
+        {!isChild && rank != null ? `#${rank}` : ''}
+      </span>
+      <div className="parcel-list-address">{title}</div>
+      {item.score != null && (
+        <span
+          className="parcel-list-score"
+          title={
+            item.hierarchyLabel
+              ? `Vacancy score ${item.score} · ${item.hierarchyLabel}`
+              : `Vacancy score ${item.score}`
+          }
+        >
+          {item.score}
+        </span>
+      )}
+      <div className="parcel-list-meta">
+        {isParent && count > 1 && (
+          <span className="parcel-list-chip parcel-list-chip-outline">
+            {count} parcels
+          </span>
+        )}
+        {acres && <span className="parcel-list-acres">{acres}</span>}
+        {hasLandUseMatch(item.category) && (
+          <span
+            className="parcel-list-chip"
+            style={{
+              background: categoryColors[item.category] ?? categoryColors.unmatched,
+            }}
+          >
+            {categoryLabels[item.category] ?? item.category}
+          </span>
+        )}
+        {item.landUseLabel && (
+          <span className="parcel-list-landuse">{item.landUseLabel}</span>
+        )}
+        {item.useCode && (
+          <span className="parcel-list-usecode" title={item.useCodeLabel}>
+            <span
+              className="parcel-list-usecode-tier"
+              style={{ color: useCodeTierColor(item.useCodeRank) }}
+            >
+              {useCodeTierLabel(item.useCode)}
+            </span>
+            {' · '}
+            Use {item.useCode}
+            {item.useCodeLabel ? `: ${item.useCodeLabel}` : ''}
+          </span>
+        )}
+        {item.zoningTier && (
+          <span
+            className="parcel-list-chip"
+            title={item.zoningLabel || `Tier ${item.zoningTier}`}
+            style={{
+              background: ZONING_TIER_COLORS[item.zoningTier]?.fillColor ?? '#9e9e9e',
+              color: '#111',
+            }}
+          >
+            Zone {item.zoningTier}
+            {item.zoningLabel ? ` · ${item.zoningLabel}` : ''}
+          </span>
+        )}
+        {item.tracks && (
+          <span
+            className={`parcel-list-chip${isBothTracks(item.tracks) ? '' : ' parcel-list-chip-outline'}`}
+            style={trackChipStyle(item.tracks)}
+          >
+            {item.tracks}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function ParcelListPanel({
   categoryLabels,
   categoryColors,
@@ -371,6 +546,38 @@ export default function ParcelListPanel({
     ? listState.items.find((item) => item.apn === selectedApn)
     : null
   const showDetail = Boolean(selectedApn)
+  const groups = useMemo(
+    () => groupListItems(listState.items),
+    [listState.items],
+  )
+  const [expandedIds, setExpandedIds] = useState(() => new Set())
+
+  function toggleGroup(id) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectedGroupId = useMemo(() => {
+    if (!selectedApn) return null
+    const group = groups.find((entry) =>
+      entry.items.some((item) => item.apn === selectedApn),
+    )
+    return group?.items.length > 1 ? group.id : null
+  }, [groups, selectedApn])
+
+  useEffect(() => {
+    if (!selectedGroupId) return
+    setExpandedIds((prev) => {
+      if (prev.has(selectedGroupId)) return prev
+      const next = new Set(prev)
+      next.add(selectedGroupId)
+      return next
+    })
+  }, [selectedGroupId])
 
   return (
     <div className="parcel-list">
@@ -396,74 +603,48 @@ export default function ParcelListPanel({
           </div>
           <ul className="parcel-list-items">
             {!listState.loading &&
-              listState.items.map((item) => (
-                <li
-                  key={item.apn}
-                  className={`parcel-list-item${selectedApn === item.apn ? ' parcel-list-item-selected' : ''}`}
-                  onClick={() => onParcelSelect?.(item.apn)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      onParcelSelect?.(item.apn)
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="parcel-list-address">{formatAddress(item)}</div>
-                  <div className="parcel-list-meta">
-                    {item.areaAcres != null && (
-                      <span className="parcel-list-acres">{item.areaAcres.toFixed(2)} ac</span>
+              groups.map((group, index) => {
+                const parent = group.items[0]
+                const isGroup = group.items.length > 1
+                const expanded = isGroup && expandedIds.has(group.id)
+                return (
+                  <li
+                    key={group.id}
+                    className={isGroup ? 'parcel-list-group' : undefined}
+                  >
+                    <ParcelListRow
+                      item={parent}
+                      rank={index + 1}
+                      selected={!isGroup && selectedApn === parent.apn}
+                      variant={isGroup ? 'parent' : 'single'}
+                      count={group.items.length}
+                      expanded={expanded}
+                      acresLabel={isGroup ? formatGroupAcres(group.items) : undefined}
+                      categoryLabels={categoryLabels}
+                      categoryColors={categoryColors}
+                      onActivate={() =>
+                        isGroup ? toggleGroup(group.id) : onParcelSelect?.(parent.apn)
+                      }
+                    />
+                    {expanded && (
+                      <ul className="parcel-list-children">
+                        {group.items.map((item) => (
+                          <li key={item.apn}>
+                            <ParcelListRow
+                              item={item}
+                              variant="child"
+                              selected={selectedApn === item.apn}
+                              categoryLabels={categoryLabels}
+                              categoryColors={categoryColors}
+                              onActivate={() => onParcelSelect?.(item.apn)}
+                            />
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                    <span
-                      className="parcel-list-chip"
-                      style={{
-                        background: categoryColors[item.category] ?? categoryColors.unmatched,
-                      }}
-                    >
-                      {categoryLabels[item.category] ?? categoryLabels.unmatched}
-                    </span>
-                    {item.landUseLabel && (
-                      <span className="parcel-list-landuse">{item.landUseLabel}</span>
-                    )}
-                    {item.useCode && (
-                      <span className="parcel-list-usecode" title={item.useCodeLabel}>
-                        <span
-                          className="parcel-list-usecode-tier"
-                          style={{ color: useCodeTierColor(item.useCodeRank) }}
-                        >
-                          {useCodeTierLabel(item.useCode)}
-                        </span>
-                        {' · '}
-                        Use {item.useCode}
-                        {item.useCodeLabel ? `: ${item.useCodeLabel}` : ''}
-                      </span>
-                    )}
-                    {item.zoningTier && (
-                      <span
-                        className="parcel-list-chip"
-                        title={item.zoningLabel || `Tier ${item.zoningTier}`}
-                        style={{
-                          background:
-                            ZONING_TIER_COLORS[item.zoningTier]?.fillColor ?? '#9e9e9e',
-                          color: '#111',
-                        }}
-                      >
-                        Zone {item.zoningTier}
-                        {item.zoningLabel ? ` · ${item.zoningLabel}` : ''}
-                      </span>
-                    )}
-                    {item.tracks && (
-                      <span
-                        className="parcel-list-chip parcel-list-chip-outline"
-                        style={{ borderColor: trackColor(item.tracks) }}
-                      >
-                        {item.tracks}
-                      </span>
-                    )}
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             {!listState.loading && !listState.error && listState.items.length === 0 && (
               <li className="parcel-list-empty">No viable parcels in the current map view.</li>
             )}
