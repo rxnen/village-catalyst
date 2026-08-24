@@ -42,6 +42,12 @@ export function effectiveCities(filters, allCities = []) {
 /** Parcels with this much area inside the SHN freeway buffer are excluded. */
 export const FREEWAY_OVERLAP_THRESHOLD = 0.5
 
+/** Parcels with this much area inside an active CSCD school campus are excluded. */
+export const SCHOOL_OVERLAP_THRESHOLD = 0.3
+
+/** Parcels with this much area inside a CPAD park holding are excluded. */
+export const PARK_OVERLAP_THRESHOLD = 0.1
+
 export function passesFilters(parcel, filters) {
   if (!parcel) return false
 
@@ -99,6 +105,18 @@ export function passesFilters(parcel, filters) {
 
   if (isFilterEnabled(filters, 'freeway')) {
     if ((parcel.freeway_overlap_frac ?? 0) >= FREEWAY_OVERLAP_THRESHOLD) {
+      return false
+    }
+  }
+
+  if (isFilterEnabled(filters, 'schools')) {
+    if ((parcel.school_overlap_frac ?? 0) >= SCHOOL_OVERLAP_THRESHOLD) {
+      return false
+    }
+  }
+
+  if (isFilterEnabled(filters, 'parks')) {
+    if ((parcel.park_overlap_frac ?? 0) >= PARK_OVERLAP_THRESHOLD) {
       return false
     }
   }
@@ -240,6 +258,28 @@ function IconFreeway() {
   )
 }
 
+function IconSchool() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 3 2 8l10 5 8-4v6h2V8L12 3zM4 13.2V17c0 1.1 3.6 3 8 3s8-1.9 8-3v-3.8l-8 4-8-4z"
+      />
+    </svg>
+  )
+}
+
+function IconPark() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 3c-2.8 2.4-4 5-4 7.2 0 2 1.3 3.8 4 5.3 2.7-1.5 4-3.3 4-5.3C16 8 14.8 5.4 12 3zM4 20h16v2H4v-2zm7-6.2V20h2v-6.2c-0.3.1-.7.2-1 .2s-.7-.1-1-.2z"
+      />
+    </svg>
+  )
+}
+
 function IconSlope() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -329,6 +369,18 @@ const FILTER_SECTIONS = [
     icon: IconFreeway,
   },
   {
+    id: 'schools',
+    label: 'Schools',
+    overviewLabel: 'Schools',
+    icon: IconSchool,
+  },
+  {
+    id: 'parks',
+    label: 'Parks',
+    overviewLabel: 'Parks',
+    icon: IconPark,
+  },
+  {
     id: 'slope',
     label: 'Slope',
     overviewLabel: 'Slope',
@@ -402,6 +454,14 @@ function overviewValue(sectionId, filters) {
 
   if (sectionId === 'freeway') {
     return `≥ ${Math.round(FREEWAY_OVERLAP_THRESHOLD * 100)}% in buffer`
+  }
+
+  if (sectionId === 'schools') {
+    return `≥ ${Math.round(SCHOOL_OVERLAP_THRESHOLD * 100)}% campus overlap`
+  }
+
+  if (sectionId === 'parks') {
+    return `≥ ${Math.round(PARK_OVERLAP_THRESHOLD * 100)}% park overlap`
   }
 
   if (sectionId === 'slope') {
@@ -481,6 +541,10 @@ function FilterControlDetail({ filters, setEnabled, setAllEnabled }) {
                   ? 'Affects ranking and the use-code 300 exception'
                   : section.id === 'freeway'
                     ? 'Hides parcels ≥50% inside the 20 m highway buffer'
+                    : section.id === 'schools'
+                      ? 'Hides parcels ≥30% overlapping an active school campus'
+                    : section.id === 'parks'
+                      ? 'Hides parcels ≥10% overlapping a CPAD park (trail corridors excepted)'
                     : undefined
               }
               checked={isFilterEnabled(filters, section.id)}
@@ -852,6 +916,55 @@ function FilterSectionDetail({
             When this filter is on, parcels with ≥{pct}% of their area inside
             the buffer are removed from the map and list. Turn the group off in
             Filter control to keep those parcels visible.
+          </p>
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'schools') {
+    const pct = Math.round(SCHOOL_OVERLAP_THRESHOLD * 100)
+    return (
+      <>
+        <h2 className="filters-detail-title">Schools</h2>
+        <p className="filters-detail-desc">
+          Hide parcels that overlap active K–12 campuses in the California
+          School Campus Database (CSCD 2025, Schools_Current_Stacked). Only
+          campuses with Status = Active in Alameda County are used. Overlap is
+          measured against the union of campus polygons, so stacked schools on
+          the same site are not double-counted.
+        </p>
+        <div className="filters-detail-controls">
+          <p className="filter-hint filter-hint-block">
+            When this filter is on, parcels with ≥{pct}% of their area inside a
+            campus are removed from the map and list. Parcels under that
+            threshold stay visible. Turn the group off in Filter control to
+            keep campus-covered parcels in the results.
+          </p>
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'parks') {
+    const pct = Math.round(PARK_OVERLAP_THRESHOLD * 100)
+    return (
+      <>
+        <h2 className="filters-detail-title">Parks</h2>
+        <p className="filters-detail-desc">
+          Hide parcels that overlap protected park and open-space holdings in
+          the California Protected Areas Database (CPAD, current release). Only
+          Alameda County holdings are used. Linear trail corridors are left out
+          of the overlay, so a trail running through a parcel does not exclude
+          it. Overlap is measured against the union of park polygons, so
+          adjacent holdings are not double-counted.
+        </p>
+        <div className="filters-detail-controls">
+          <p className="filter-hint filter-hint-block">
+            When this filter is on, parcels with ≥{pct}% of their area inside a
+            park are removed from the map and list. Parcels under that
+            threshold stay visible. Turn the group off in Filter control to
+            keep park-covered parcels in the results.
           </p>
         </div>
       </>

@@ -28,6 +28,8 @@ import { isSatelliteZoom, styleParcelFeature } from './parcelStyle.js'
 import { attachParcelPopupSelect, parcelDetailLink } from './parcelPopup.js'
 import { ZoningLayer, ZONING_OVERLAY_NAME } from './ZoningLayer.jsx'
 import { FreewayLayer } from './FreewayLayer.jsx'
+import { SchoolLayer } from './SchoolLayer.jsx'
+import { ParkLayer } from './ParkLayer.jsx'
 import {
   ZONING_TIER_COLORS,
   ZONING_TIER_LABELS,
@@ -161,6 +163,14 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
           parcel.coverage_ratio != null
             ? `<br/>Footprint coverage: ${(parcel.coverage_ratio * 100).toFixed(1)}%`
             : ''
+        const schoolBlock =
+          parcel.school_overlap_frac != null
+            ? `<br/>School campus overlap: ${(parcel.school_overlap_frac * 100).toFixed(0)}%`
+            : ''
+        const parkBlock =
+          parcel.park_overlap_frac != null
+            ? `<br/>Park overlap: ${(parcel.park_overlap_frac * 100).toFixed(0)}%`
+            : ''
         const steepPct =
           parcelIndex?.defaults?.slopeSteepPct ?? DEFAULT_SLOPE_STEEP_PCT
         const slopeLine = formatSlopeSummary(parcel, steepPct)
@@ -188,6 +198,8 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
             `<br/>${parcel.area_acres.toFixed(2)} acres` +
             ratioBlock +
             coverageBlock +
+            schoolBlock +
+            parkBlock +
             slopeBlock +
             zoningBlock +
             scoreBlock +
@@ -418,6 +430,8 @@ export default function App() {
         <LayersControl position="bottomright">
           <ZoningLayer />
           <FreewayLayer />
+          <SchoolLayer />
+          <ParkLayer />
           {landUse && parcelIndex && (
             <LayersControl.Overlay name="General Plan land use">
               <GeoJSON

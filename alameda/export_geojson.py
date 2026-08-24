@@ -391,6 +391,62 @@ def main() -> None:
         }
     )
 
+    print("Annotating active school campus overlap…")
+    from annotate_school_overlap import (
+        DEFAULT_OVERLAP_THRESHOLD,
+        annotate_school_overlap,
+        build_school_union,
+        fetch_cscd_campuses,
+    )
+
+    campuses = fetch_cscd_campuses()
+    school_union = build_school_union(campuses)
+    sch_stats = annotate_school_overlap(
+        index["parcels"],
+        geom,
+        school_union,
+        threshold=DEFAULT_OVERLAP_THRESHOLD,
+    )
+    print(
+        f"  schools: {sch_stats['hit_parcels']:,} intersect a campus; "
+        f"{sch_stats['excluded_ge_30']:,} ≥{int(DEFAULT_OVERLAP_THRESHOLD * 100)}% overlap"
+    )
+    index.setdefault("defaults", {}).update(
+        {
+            "schoolOverlapThreshold": DEFAULT_OVERLAP_THRESHOLD,
+        }
+    )
+
+    print("Annotating CPAD park overlap…")
+    from annotate_park_overlap import (
+        DEFAULT_OVERLAP_THRESHOLD as PARK_OVERLAP_THRESHOLD,
+        annotate_park_overlap,
+        build_union,
+        fetch_cpad_holdings,
+        split_park_and_trail,
+    )
+
+    holdings = fetch_cpad_holdings()
+    parks, trails = split_park_and_trail(holdings)
+    park_union = build_union(parks)
+    park_stats = annotate_park_overlap(
+        index["parcels"],
+        geom,
+        park_union,
+        threshold=PARK_OVERLAP_THRESHOLD,
+    )
+    park_pct = int(PARK_OVERLAP_THRESHOLD * 100)
+    print(
+        f"  parks: {len(parks):,} holdings ({len(trails):,} trail corridors omitted); "
+        f"{park_stats['hit_parcels']:,} intersect a park; "
+        f"{park_stats[f'excluded_ge_{park_pct}']:,} ≥{park_pct}% overlap"
+    )
+    index.setdefault("defaults", {}).update(
+        {
+            "parkOverlapThreshold": PARK_OVERLAP_THRESHOLD,
+        }
+    )
+
     print("Annotating 3DEP slope…")
     from annotate_slope import (
         DEFAULT_CELL_SIZE_M,
