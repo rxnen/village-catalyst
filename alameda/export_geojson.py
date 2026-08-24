@@ -447,6 +447,36 @@ def main() -> None:
         }
     )
 
+    print("Annotating open-water (bay/ocean) overlap…")
+    from annotate_water_overlap import (
+        DEFAULT_OVERLAP_THRESHOLD as WATER_OVERLAP_THRESHOLD,
+        annotate_water_overlap,
+        build_water_union,
+        load_open_water,
+        write_overlay_geojson,
+    )
+
+    open_water = load_open_water()
+    write_overlay_geojson(open_water)
+    water_union = build_water_union(open_water)
+    water_stats = annotate_water_overlap(
+        index["parcels"],
+        geom,
+        water_union,
+        threshold=WATER_OVERLAP_THRESHOLD,
+    )
+    water_pct = int(WATER_OVERLAP_THRESHOLD * 100)
+    print(
+        f"  water: {len(open_water):,} bay/ocean polygons; "
+        f"{water_stats['hit_parcels']:,} intersect open water; "
+        f"{water_stats[f'excluded_ge_{water_pct}']:,} ≥{water_pct}% overlap"
+    )
+    index.setdefault("defaults", {}).update(
+        {
+            "waterOverlapThreshold": WATER_OVERLAP_THRESHOLD,
+        }
+    )
+
     print("Annotating 3DEP slope…")
     from annotate_slope import (
         DEFAULT_CELL_SIZE_M,

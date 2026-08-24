@@ -297,6 +297,12 @@ function ParcelDetail({
           </DetailRow>
         )}
 
+        {parcel?.water_overlap_frac != null && (
+          <DetailRow label="Open-water overlap">
+            {(parcel.water_overlap_frac * 100).toFixed(0)}%
+          </DetailRow>
+        )}
+
         {parcel?.slope_mean_pct != null && (
           <div className="parcel-detail-section">
             <b>Slope</b>

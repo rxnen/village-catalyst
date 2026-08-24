@@ -30,6 +30,7 @@ import { ZoningLayer, ZONING_OVERLAY_NAME } from './ZoningLayer.jsx'
 import { FreewayLayer } from './FreewayLayer.jsx'
 import { SchoolLayer } from './SchoolLayer.jsx'
 import { ParkLayer } from './ParkLayer.jsx'
+import { WaterLayer } from './WaterLayer.jsx'
 import {
   ZONING_TIER_COLORS,
   ZONING_TIER_LABELS,
@@ -171,6 +172,10 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
           parcel.park_overlap_frac != null
             ? `<br/>Park overlap: ${(parcel.park_overlap_frac * 100).toFixed(0)}%`
             : ''
+        const waterBlock =
+          parcel.water_overlap_frac != null
+            ? `<br/>Open-water overlap: ${(parcel.water_overlap_frac * 100).toFixed(0)}%`
+            : ''
         const steepPct =
           parcelIndex?.defaults?.slopeSteepPct ?? DEFAULT_SLOPE_STEEP_PCT
         const slopeLine = formatSlopeSummary(parcel, steepPct)
@@ -200,6 +205,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
             coverageBlock +
             schoolBlock +
             parkBlock +
+            waterBlock +
             slopeBlock +
             zoningBlock +
             scoreBlock +
@@ -432,6 +438,7 @@ export default function App() {
           <FreewayLayer />
           <SchoolLayer />
           <ParkLayer />
+          <WaterLayer />
           {landUse && parcelIndex && (
             <LayersControl.Overlay name="General Plan land use">
               <GeoJSON

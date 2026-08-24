@@ -48,6 +48,9 @@ export const SCHOOL_OVERLAP_THRESHOLD = 0.3
 /** Parcels with this much area inside a CPAD park holding are excluded. */
 export const PARK_OVERLAP_THRESHOLD = 0.1
 
+/** Parcels with this much area inside Census TIGER bay/ocean polygons are excluded. */
+export const WATER_OVERLAP_THRESHOLD = 0.5
+
 export function passesFilters(parcel, filters) {
   if (!parcel) return false
 
@@ -117,6 +120,12 @@ export function passesFilters(parcel, filters) {
 
   if (isFilterEnabled(filters, 'parks')) {
     if ((parcel.park_overlap_frac ?? 0) >= PARK_OVERLAP_THRESHOLD) {
+      return false
+    }
+  }
+
+  if (isFilterEnabled(filters, 'water')) {
+    if ((parcel.water_overlap_frac ?? 0) >= WATER_OVERLAP_THRESHOLD) {
       return false
     }
   }
@@ -280,6 +289,17 @@ function IconPark() {
   )
 }
 
+function IconWater() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 3.2C9.2 7 6 11.1 6 14.2 6 17.5 8.7 20 12 20s6-2.5 6-5.8C18 11.1 14.8 7 12 3.2zM8.2 14.4c.3-1.5 1.5-3.5 3.8-6.6 2.3 3.1 3.5 5.1 3.8 6.6H8.2z"
+      />
+    </svg>
+  )
+}
+
 function IconSlope() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -381,6 +401,12 @@ const FILTER_SECTIONS = [
     icon: IconPark,
   },
   {
+    id: 'water',
+    label: 'Open water',
+    overviewLabel: 'Water',
+    icon: IconWater,
+  },
+  {
     id: 'slope',
     label: 'Slope',
     overviewLabel: 'Slope',
@@ -464,6 +490,10 @@ function overviewValue(sectionId, filters) {
     return `≥ ${Math.round(PARK_OVERLAP_THRESHOLD * 100)}% park overlap`
   }
 
+  if (sectionId === 'water') {
+    return `≥ ${Math.round(WATER_OVERLAP_THRESHOLD * 100)}% bay / ocean`
+  }
+
   if (sectionId === 'slope') {
     const selected = SLOPE_TIERS.filter(
       (tier) => filters.includeSlopeTiers?.[tier.id] !== false,
@@ -545,6 +575,8 @@ function FilterControlDetail({ filters, setEnabled, setAllEnabled }) {
                       ? 'Hides parcels ≥30% overlapping an active school campus'
                     : section.id === 'parks'
                       ? 'Hides parcels ≥10% overlapping a CPAD park (trail corridors excepted)'
+                    : section.id === 'water'
+                      ? 'Hides parcels ≥50% inside bay or ocean (not rivers or ponds)'
                     : undefined
               }
               checked={isFilterEnabled(filters, section.id)}
@@ -965,6 +997,30 @@ function FilterSectionDetail({
             park are removed from the map and list. Parcels under that
             threshold stay visible. Turn the group off in Filter control to
             keep park-covered parcels in the results.
+          </p>
+        </div>
+      </>
+    )
+  }
+
+  if (sectionId === 'water') {
+    const pct = Math.round(WATER_OVERLAP_THRESHOLD * 100)
+    return (
+      <>
+        <h2 className="filters-detail-title">Open water</h2>
+        <p className="filters-detail-desc">
+          Hide parcels that sit in San Francisco Bay, San Leandro Bay, or
+          Oakland Inner Harbor. The overlay uses Census TIGER Area Hydrography
+          for Alameda County and keeps only bay/ocean polygons (MTFCC H2051
+          and H2053). Lakes, ponds, reservoirs, creeks, and canals are not
+          used, so a river or pond crossing a parcel does not exclude it.
+        </p>
+        <div className="filters-detail-controls">
+          <p className="filter-hint filter-hint-block">
+            When this filter is on, parcels with ≥{pct}% of their area in open
+            water are removed from the map and list. Waterfront lots under
+            that threshold stay visible. Turn the group off in Filter control
+            to keep bay-covered parcels in the results.
           </p>
         </div>
       </>
