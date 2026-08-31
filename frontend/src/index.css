@@ -239,6 +239,14 @@ body,
   max-width: 36em;
 }
 
+.filters-detail-desc p {
+  margin: 0;
+}
+
+.filters-detail-desc p + p {
+  margin-top: 0.85em;
+}
+
 .filters-detail-controls {
   display: flex;
   flex-direction: column;

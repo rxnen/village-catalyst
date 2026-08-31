@@ -815,10 +815,27 @@ function FilterSectionDetail({
     return (
       <>
         <h2 className="filters-detail-title">Lead tracks</h2>
-        <p className="filters-detail-desc">
-          Track A: OTEX &gt; 0, or HOEX = 0 and mailing city ≠ situs city.
-          Track B: Land &gt; $50k, Imps/Land &lt; 20%, no economic unit.
-        </p>
+        <div className="filters-detail-desc">
+          <p>
+            Lead tracks flag lots that often look easier to buy or reuse. That
+            usually means the owner does not live there, or the land is valuable
+            but barely built on. A lot can match one track or both.
+          </p>
+          <p>
+            <b>Track A</b> looks at who owns the lot. It matches when a church,
+            nonprofit, or public agency has a tax exemption, or when the owner’s
+            tax bill is mailed to a different city and they are not claiming a
+            homeowner exemption — a sign they probably do not live on the
+            property.
+          </p>
+          <p>
+            <b>Track B</b> looks at how the lot is used. It matches when the
+            county values the land at more than $50,000, buildings on it are
+            worth less than 20% of the land, and the lot is not grouped with
+            neighboring lots as one business. That usually means empty or
+            underused land.
+          </p>
+        </div>
         <div className="filters-detail-controls">
           <label className="filter-check">
             <input
@@ -827,7 +844,7 @@ function FilterSectionDetail({
               disabled={!enabled}
               onChange={(e) => set({ onlyLeads: e.target.checked })}
             />
-            Only lead parcels (Track A or B)
+            Only lots that match Track A or Track B
           </label>
           <label className="filter-check">
             <input
@@ -836,7 +853,7 @@ function FilterSectionDetail({
               onChange={(e) => set({ requireBothTracks: e.target.checked })}
               disabled={!enabled || !filters.onlyLeads}
             />
-            Only strongest leads (both tracks)
+            Only lots that match both tracks
           </label>
         </div>
       </>
