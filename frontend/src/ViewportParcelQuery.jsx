@@ -1,11 +1,7 @@
 import { useEffect } from 'react'
 import { useMap } from 'react-leaflet'
-import { formatTracks, leadRank, passesFilters } from './FilterPanel.jsx'
-import {
-  effectiveUseCodeRank,
-  parcelListRank,
-} from './useCodeRank.js'
-import { parcelHierarchyTier, parcelScore } from './parcelScore.js'
+import { passesFilters } from './FilterPanel.jsx'
+import { parcelToListItem, sortListItems } from './parcelListItem.js'
 import { captureMapView, mapViewChangedSignificantly } from './mapViewThreshold.js'
 
 export const QUERY_LIMIT = 2000
@@ -18,44 +14,11 @@ function buildListItems(parcels, filters, bounds) {
     if (!passesFilters(parcel, filters)) continue
     if (parcel.lat == null || parcel.lng == null) continue
     if (!bounds.contains([parcel.lat, parcel.lng])) continue
-
-    const category = parcel.land_use?.category ?? 'unmatched'
-    const { total: score } = parcelScore(parcel, filters.maxCoverageRatio)
-    const hierarchy = parcelHierarchyTier(score)
-    matches.push({
-      apn,
-      address: parcel.address?.trim() || 'No address',
-      city: parcel.city,
-      zip: parcel.zip,
-      category,
-      landUseLabel: parcel.land_use?.label,
-      useCode: parcel.use_code,
-      useCodeLabel: parcel.use_code_label,
-      tracks: formatTracks(parcel),
-      leadRank: leadRank(parcel),
-      useCodeRank: effectiveUseCodeRank(parcel),
-      coverageRatio: parcel.coverage_ratio,
-      areaAcres: parcel.area_acres,
-      zoningTier: parcel.zoning?.tier ?? null,
-      zoningLabel: parcel.zoning?.matched_zone ?? parcel.zoning?.base_zone ?? null,
-      score,
-      hierarchyColor: hierarchy.color,
-      hierarchyLabel: hierarchy.label,
-    })
+    matches.push(parcelToListItem(apn, parcel, filters))
   }
 
-  matches.sort((a, b) => {
-    const scoreDiff = (b.score ?? 0) - (a.score ?? 0)
-    if (scoreDiff !== 0) return scoreDiff
-    const rankDiff =
-      parcelListRank(a, filters.maxCoverageRatio) -
-      parcelListRank(b, filters.maxCoverageRatio)
-    if (rankDiff !== 0) return rankDiff
-    return a.address.localeCompare(b.address, undefined, { sensitivity: 'base' })
-  })
-
   return {
-    items: matches.slice(0, QUERY_LIMIT),
+    items: sortListItems(matches, filters).slice(0, QUERY_LIMIT),
     truncated: matches.length > QUERY_LIMIT,
   }
 }

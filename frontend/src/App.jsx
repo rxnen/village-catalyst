@@ -225,7 +225,7 @@ function AlamedaParcelsLayer({ parcelIndex, filters, onParcelSelect }) {
 }
 
 const CARTO_LIGHT = {
-  url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2886_1_edc0aea659579f3647f24c5a',
   attribution:
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
 }

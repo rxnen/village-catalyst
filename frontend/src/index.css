@@ -629,6 +629,30 @@ body,
   flex-shrink: 0;
 }
 
+.parcel-list-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.parcel-list-header-btn {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 1px solid #cfd8dc;
+  border-radius: 4px;
+  background: #fff;
+  color: #1565c0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.parcel-list-header-btn:hover {
+  background: #f5f9fc;
+}
+
 .parcel-list-count {
   margin: 4px 0 0;
   color: #546e7a;
@@ -790,6 +814,40 @@ body,
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.parcel-detail-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.parcel-detail-save {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #cfd8dc;
+  border-radius: 50%;
+  background: #fff;
+  color: #1565c0;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.parcel-detail-save:hover {
+  background: #f5f9fc;
+}
+
+.parcel-detail-save-active {
+  background: #e8f5e9;
+  border-color: #2e7d32;
+  color: #2e7d32;
+  font-size: 14px;
 }
 
 .parcel-detail-back {

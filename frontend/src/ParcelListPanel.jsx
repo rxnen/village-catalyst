@@ -17,6 +17,12 @@ import {
   DEFAULT_SLOPE_STEEP_PCT,
   slopeTier,
 } from './slopeTiers.js'
+import { buildSavedListItems } from './parcelListItem.js'
+import {
+  loadSavedApns,
+  saveApn,
+  removeApn,
+} from './savedParcels.js'
 
 function trackColor(tracks) {
   if (tracks === 'Track A + Track B') return BOTH_TRACKS_COLOR
@@ -206,6 +212,9 @@ function ParcelDetail({
   categoryLabels,
   categoryColors,
   filters,
+  isSaved,
+  onToggleSave,
+  listMode,
   onBack,
 }) {
   const category = parcel?.land_use?.category ?? listItem?.category ?? 'unmatched'
@@ -222,9 +231,21 @@ function ParcelDetail({
   return (
     <>
       <div className="parcel-list-header parcel-detail-header">
-        <button type="button" className="parcel-detail-back" onClick={onBack}>
-          ← Parcels in view
-        </button>
+        <div className="parcel-detail-header-row">
+          <button type="button" className="parcel-detail-back" onClick={onBack}>
+            {listMode === 'saved' ? '← Saved parcels' : '← Parcels in view'}
+          </button>
+          <button
+            type="button"
+            className={`parcel-detail-save${isSaved ? ' parcel-detail-save-active' : ''}`}
+            onClick={onToggleSave}
+            title={isSaved ? 'Remove from saved parcels' : 'Save parcel'}
+            aria-label={isSaved ? 'Remove from saved parcels' : 'Save parcel'}
+            aria-pressed={isSaved}
+          >
+            {isSaved ? '✓' : '+'}
+          </button>
+        </div>
         <div className="parcel-detail-title">{formatAddress(addressItem)}</div>
       </div>
       <div className="parcel-detail-body">
@@ -559,16 +580,51 @@ export default function ParcelListPanel({
   onParcelSelect,
   filters,
 }) {
+  const [listMode, setListMode] = useState('viewport')
+  const [savedApns, setSavedApns] = useState(() => loadSavedApns())
+
+  const savedListState = useMemo(() => {
+    const items = buildSavedListItems(
+      savedApns,
+      parcelIndex?.parcels,
+      filters,
+    )
+    return {
+      items,
+      loading: false,
+      truncated: false,
+      error: false,
+    }
+  }, [savedApns, parcelIndex, filters])
+
+  const activeListState = listMode === 'saved' ? savedListState : listState
   const selectedParcel = selectedApn ? parcelIndex?.parcels?.[selectedApn] : null
   const selectedListItem = selectedApn
-    ? listState.items.find((item) => item.apn === selectedApn)
+    ? activeListState.items.find((item) => item.apn === selectedApn)
     : null
   const showDetail = Boolean(selectedApn)
   const groups = useMemo(
-    () => groupListItems(listState.items),
-    [listState.items],
+    () => groupListItems(activeListState.items),
+    [activeListState.items],
   )
   const [expandedIds, setExpandedIds] = useState(() => new Set())
+  const isSaved = selectedApn ? savedApns.includes(selectedApn) : false
+
+  function toggleSaveApn(apn) {
+    setSavedApns((prev) =>
+      prev.includes(apn) ? removeApn(prev, apn) : saveApn(prev, apn),
+    )
+  }
+
+  function openSavedList() {
+    setListMode('saved')
+    onParcelSelect?.(null)
+  }
+
+  function openViewportList() {
+    setListMode('viewport')
+    onParcelSelect?.(null)
+  }
 
   function toggleGroup(id) {
     setExpandedIds((prev) => {
@@ -602,14 +658,37 @@ export default function ParcelListPanel({
       <div className={`parcel-list-slider${showDetail ? ' parcel-list-slider-detail' : ''}`}>
         <div className="parcel-list-page">
           <div className="parcel-list-header">
-            <b>Parcels in view</b>
+            <div className="parcel-list-header-row">
+              <b>{listMode === 'saved' ? 'Saved parcels' : 'Parcels in view'}</b>
+              {listMode === 'saved' ? (
+                <button
+                  type="button"
+                  className="parcel-list-header-btn"
+                  onClick={openViewportList}
+                >
+                  In view
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="parcel-list-header-btn"
+                  onClick={openSavedList}
+                >
+                  Saved{savedApns.length > 0 ? ` (${savedApns.length})` : ''}
+                </button>
+              )}
+            </div>
             <p className="parcel-list-count">
-              {listState.loading
-                ? 'Loading…'
-                : listState.error
-                  ? 'Could not load parcels'
-                  : `${listState.items.length.toLocaleString()} viable parcel${listState.items.length === 1 ? '' : 's'}`}
-              {!listState.loading && listState.truncated && (
+              {listMode === 'saved'
+                ? savedApns.length === 0
+                  ? 'No saved parcels yet'
+                  : `${activeListState.items.length.toLocaleString()} saved parcel${activeListState.items.length === 1 ? '' : 's'}`
+                : activeListState.loading
+                  ? 'Loading…'
+                  : activeListState.error
+                    ? 'Could not load parcels'
+                    : `${activeListState.items.length.toLocaleString()} viable parcel${activeListState.items.length === 1 ? '' : 's'}`}
+              {listMode === 'viewport' && !activeListState.loading && activeListState.truncated && (
                 <>
                   <br />
                   <span className="parcel-list-truncated">
@@ -620,7 +699,7 @@ export default function ParcelListPanel({
             </p>
           </div>
           <ul className="parcel-list-items">
-            {!listState.loading &&
+            {!activeListState.loading &&
               groups.map((group, index) => {
                 const parent = group.items[0]
                 const isGroup = group.items.length > 1
@@ -663,8 +742,14 @@ export default function ParcelListPanel({
                   </li>
                 )
               })}
-            {!listState.loading && !listState.error && listState.items.length === 0 && (
-              <li className="parcel-list-empty">No viable parcels in the current map view.</li>
+            {!activeListState.loading &&
+              !activeListState.error &&
+              activeListState.items.length === 0 && (
+              <li className="parcel-list-empty">
+                {listMode === 'saved'
+                  ? 'Save parcels from the detail view with the + button.'
+                  : 'No viable parcels in the current map view.'}
+              </li>
             )}
           </ul>
         </div>
@@ -678,6 +763,9 @@ export default function ParcelListPanel({
               categoryLabels={categoryLabels}
               categoryColors={categoryColors}
               filters={filters}
+              isSaved={isSaved}
+              onToggleSave={() => toggleSaveApn(selectedApn)}
+              listMode={listMode}
               onBack={() => onParcelSelect?.(null)}
             />
           )}
