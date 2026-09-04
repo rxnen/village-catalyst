@@ -1,0 +1,49 @@
+# OS / editor
+.DS_Store
+**/.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Node / Vite
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Secrets and local env — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+**/credentials.json
+.htpasswd
+htpasswd
+secrets/
+
+# Offline GIS pipeline dumps (scripts stay tracked; data stays local)
+alameda/raw/
+alameda/processed/
+alameda/filtered/
+alameda/data/
+sf/raw/
+sf/processed/
+sf/filtered/
+sf/data/
+buildings/
+
+# Legacy SF map layers — not used by the current app
+frontend/public/city_lands.geojson
+frontend/public/land_parcels.geojson
